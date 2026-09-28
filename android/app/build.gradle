@@ -1,0 +1,59 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'cn.zhiya.pact'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'cn.zhiya.pact'
+        minSdk 26
+        targetSdk 36
+        versionCode 6
+        versionName '1.2.3'
+        manifestPlaceholders = [pactApiBaseUrl: System.getenv('PACT_API_BASE_URL') ?: '']
+        testInstrumentationRunner 'cn.zhiya.pact.PactInstrumentation'
+    }
+    signingConfigs {
+        production {
+            def path = System.getenv('ZHIYA_SIGNING_STORE_FILE')
+            if (path) storeFile file(path)
+            storePassword System.getenv('ZHIYA_SIGNING_STORE_PASSWORD')
+            keyAlias System.getenv('ZHIYA_SIGNING_KEY_ALIAS')
+            keyPassword System.getenv('ZHIYA_SIGNING_KEY_PASSWORD')
+        }
+    }
+    buildTypes {
+        debug { applicationIdSuffix '.preview'; versionNameSuffix '-preview-debug' }
+        release { minifyEnabled true; signingConfig signingConfigs.production; proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro' }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    lint { abortOnError true; warningsAsErrors true }
+    buildFeatures { buildConfig true }
+}
+
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+
+tasks.register('verifyReleaseSigning') {
+    doLast {
+        ['STORE_FILE','STORE_PASSWORD','KEY_ALIAS','KEY_PASSWORD'].each {
+            if (!System.getenv('ZHIYA_SIGNING_' + it)) throw new GradleException('Production signing is not configured: ZHIYA_SIGNING_' + it)
+        }
+        if (!android.signingConfigs.production.storeFile.isFile()) throw new GradleException('Production keystore file is missing')
+    }
+}
+tasks.matching { it.name == 'preReleaseBuild' }.configureEach { dependsOn 'verifyReleaseSigning' }
+tasks.register('verifyReleaseApi') {
+    doLast {
+        def value = System.getenv('PACT_API_BASE_URL') ?: ''
+        def endpoint = new URI(value)
+        if (endpoint.scheme != 'https' || !endpoint.host || endpoint.userInfo || endpoint.query || endpoint.fragment) {
+            throw new GradleException('PACT_API_BASE_URL must be an HTTPS service URL without credentials, query or fragment')
+        }
+    }
+}
+tasks.matching { it.name == 'preReleaseBuild' }.configureEach { dependsOn 'verifyReleaseApi' }
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}

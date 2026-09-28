@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">如约</string>
+    <string name="brand_tagline">把答应，变成相伴。</string>
+    <string name="photos_added">已添加 %1$d 张照片</string>
+</resources>

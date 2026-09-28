@@ -1,0 +1,16 @@
+<resources>
+    <style name="PactTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#A94865</item>
+        <item name="android:colorControlActivated">#A94865</item>
+        <item name="android:colorControlHighlight">#22A94865</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">#FFFAF6</item>
+        <item name="android:navigationBarColor">#FFFAF6</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#FFFAF6</item>
+        <item name="android:textColorPrimary">#40333C</item>
+        <item name="android:textColorSecondary">#806C78</item>
+    </style>
+</resources>
