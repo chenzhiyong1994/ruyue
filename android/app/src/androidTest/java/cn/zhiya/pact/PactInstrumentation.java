@@ -175,6 +175,12 @@ public final class PactInstrumentation extends Instrumentation {
                 runOnMainSync(() -> require(find(activeRoot(), label, false) == null, "Unexpected view: " + label));
                 require(popup(label) == null, "Unexpected popup view: " + label);
                 break;
+            case "count":
+                int[] matches = {0};
+                runOnMainSync(() -> matches[0] = countText(activeRoot(), label));
+                require(matches[0] == step.getInt("expected"), "Text count: " + label
+                        + "; expected=" + step.getInt("expected") + "; actual=" + matches[0]);
+                break;
             case "layout":
                 AssertionError[] violation = {null};
                 runOnMainSync(() -> {
@@ -277,6 +283,17 @@ public final class PactInstrumentation extends Instrumentation {
             }
         }
         return null;
+    }
+
+    /** Count each visible text view once, including entries below the scroll fold. */
+    private static int countText(View view, String label) {
+        if (view.getVisibility() != View.VISIBLE) return 0;
+        int count = view instanceof TextView && label.contentEquals(((TextView) view).getText()) ? 1 : 0;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int n = 0; n < group.getChildCount(); n++) count += countText(group.getChildAt(n), label);
+        }
+        return count;
     }
 
     private AccessibilityNodeInfo popup(String label) {

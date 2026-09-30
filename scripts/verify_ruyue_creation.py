@@ -8,12 +8,11 @@ Display overrides are restored even when a UI assertion fails.
 
 import argparse
 import json
-import os
 import re
 import sys
 from pathlib import Path
 
-from smoke_pact import ROOT, PACKAGE, Device, api, await_text, click, fill, select
+from smoke_pact import ROOT, PACKAGE, Device, api, await_text, click, fill, select, default_adb
 from verify_pair import local_api, now, preferences, require, save
 from verify_resilience import display_settings, ignored_path, restore_display
 
@@ -44,7 +43,7 @@ class CreationVerification:
         require(self.fixture.get('pending') is None, 'Pair verification is still in progress')
         pair_report = json.loads((self.fixture_path.parent / 'report.json').read_text(encoding='utf-8'))
         require(pair_report.get('status') == 'passed' and pair_report.get('fixtureId') == suffix
-                and '11-receive' in pair_report.get('completedStages', []),
+                and '08-give-final' in pair_report.get('completedStages', []),
                 'A completed matching pair report is required before this read-only check')
         accounts = self.fixture.get('accounts', {})
         for key in ('a', 'b'):
@@ -112,8 +111,8 @@ class CreationVerification:
         return snapshots
 
     def first_page(self):
-        greeting = self.fixture['accounts']['a']['displayName'] + '，欢迎回到我们的日常'
-        return [await_text(greeting), click('约定'), click('创建约定'),
+        home_entry = '查看全部约定'
+        return [await_text(home_entry), click('约定'), click('创建约定'),
                 await_text('创建第 1 步，共 3 步'), select('所属关系', self.relationship_name),
                 fill('约定标题', SYNTHETIC['title']), fill('达成条件', SYNTHETIC['conditions']),
                 fill('目标次数', SYNTHETIC['count']), fill('完成截止日期', SYNTHETIC['due'])]
@@ -231,7 +230,7 @@ class CreationVerification:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--fixture', default='artifacts/pact/ruyue/pair/fixture.json')
-    parser.add_argument('--adb', default=str(Path(os.environ.get('ANDROID_HOME', '')) / 'platform-tools/adb.exe'))
+    parser.add_argument('--adb', default=default_adb())
     parser.add_argument('--evidence-dir', default='artifacts/pact/ruyue/creation')
     args = parser.parse_args()
     try:

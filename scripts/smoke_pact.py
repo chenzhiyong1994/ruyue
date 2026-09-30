@@ -13,6 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = 'cn.zhiya.pact.preview'
 
 
+def default_adb():
+    sdk = os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT')
+    binary = 'adb.exe' if os.name == 'nt' else 'adb'
+    return str(Path(sdk) / 'platform-tools' / binary) if sdk else binary
+
+
 class Device:
     def __init__(self, adb, serial, output):
         self.adb, self.serial, self.output = str(adb), serial, Path(output)
@@ -67,7 +73,7 @@ def main():
     parser.add_argument('--serial', required=True)
     parser.add_argument('--steps', required=True, help='JSON array of explicit PactInstrumentation UI steps')
     parser.add_argument('--name', default='ui-stage')
-    parser.add_argument('--adb', default=str(Path(os.environ.get('ANDROID_HOME', '')) / 'platform-tools/adb.exe'))
+    parser.add_argument('--adb', default=default_adb())
     parser.add_argument('--evidence-dir', default='artifacts/pact/smoke')
     args = parser.parse_args()
     device = Device(args.adb, args.serial, ROOT / args.evidence_dir)

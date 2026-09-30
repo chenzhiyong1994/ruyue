@@ -31,6 +31,9 @@ h1,h2,h3{font-weight:400}
 h1{font:400 clamp(46px,5.25vw,70px)/1.4 var(--serif);letter-spacing:.025em;margin-left:-.04em}
 h1 em{font-style:normal;color:var(--rose)}
 .hero-copy{font-size:17px;line-height:1.95;color:var(--muted);max-width:29em;margin-top:26px}
+.project-status{margin-top:23px;max-width:34em;padding-left:14px;border-left:2px solid #cda1b2;font-size:12px;line-height:1.8;color:var(--muted)}
+.project-status strong{display:block;color:var(--ink);font-weight:600}
+.project-status span{display:block;margin-top:2px}
 .actions{display:flex;flex-wrap:wrap;align-items:center;gap:14px 25px;margin-top:35px}
 .action{display:inline-flex;justify-content:center;align-items:center;gap:25px;min-height:52px;padding:12px 22px;border:1px solid var(--rose);border-radius:7px;background:var(--rose);color:#fffaf6;text-decoration:none;font-size:14px;transition:background .2s,transform .2s}
 .action:hover{background:var(--rose-dark);border-color:var(--rose-dark);color:#fffaf6;transform:translateY(-2px)}

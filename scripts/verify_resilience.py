@@ -6,7 +6,6 @@ Device settings and the single temporary reverse mapping are always restored.
 
 import argparse
 import json
-import os
 import re
 import socket
 import subprocess
@@ -18,7 +17,8 @@ from http.client import HTTPConnection
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from verify_pair import ROOT, PACKAGE, Device, api, await_text, click, fill
+from verify_pair import ROOT, PACKAGE, Device, api, await_text, click, fill, select
+from smoke_pact import default_adb
 from verify_pair import local_api, now, preferences, require, save
 
 
@@ -115,21 +115,24 @@ def failure_proxy(base):
 class ResilienceVerification:
     def __init__(self, args):
         self.output = ignored_path(args.evidence_dir)
+        require(not self.output.exists(), 'Use a fresh evidence directory; preserve previous resilience evidence')
         fixture_path = ignored_path(args.fixture)
         self.fixture = json.loads(fixture_path.read_text(encoding='utf-8'))
-        require(self.fixture.get('formatVersion') == 1, 'Unsupported pair fixture')
+        require(self.fixture.get('formatVersion') == 1
+                and self.fixture.get('settlementMode') == 'issuer_final', 'Unsupported pair fixture')
         pair_report = json.loads((fixture_path.parent / 'report.json').read_text(encoding='utf-8'))
         require(pair_report.get('status') == 'passed'
                 and pair_report.get('fixtureId') == self.fixture['id']
-                and '11-receive' in pair_report.get('completedStages', []),
+                and '08-give-final' in pair_report.get('completedStages', []),
                 'A completed matching pair report is required')
         self.agreement_id = pair_report['agreement']['id']
         require(pair_report['agreement']['rewardState'] == 'received', 'Pair reward is not settled')
         self.base, self.port = local_api(self.fixture['api'])
         serials = self.fixture['serials']
-        require(serials['a'] != serials['b'], 'Two distinct fixture devices are required')
+        require(set(serials) == {'a', 'b'} and serials['a'] != serials['b'],
+                'Two distinct pair fixture devices are required')
         self.devices = {key: Device(args.adb, serials[key], self.output / ('device-' + key))
-                        for key in ('a', 'b')}
+                        for key in serials}
         for key, device in self.devices.items():
             prefs = preferences(device)
             require(prefs.get('baseUrl') == f'http://127.0.0.1:{self.port}',
@@ -138,7 +141,9 @@ class ResilienceVerification:
             user = api(self.base, '/v1/state', token=prefs['token'])['user']
             require(user['id'] == self.fixture['accounts'][key]['user']['id'],
                     'Device session does not match its synthetic fixture account')
-        self.note = '合成断网恢复说明 ' + uuid.uuid4().hex[:16]
+        suffix = uuid.uuid4().hex[:16]
+        self.note = '合成断网恢复条件 ' + suffix
+        self.new_title = '合成断网恢复约定 ' + suffix
         self.report = {'status': 'running', 'startedAt': now(), 'fixtureId': self.fixture['id'],
                        'agreementId': self.agreement_id, 'syntheticNote': self.note, 'checks': {},
                        'businessMutationMethod': 'Android UI only; host API uses GET only',
@@ -155,6 +160,22 @@ class ResilienceVerification:
         return [await_text('账户设置'), click('约定'),
                 await_text('查看约定：' + self.fixture['agreementTitle']),
                 click('查看约定：' + self.fixture['agreementTitle'])]
+
+    def states(self):
+        result = {}
+        for key, account in self.fixture['accounts'].items():
+            state = api(self.base, '/v1/state', token=account['token'])
+            require(state['user']['id'] == account['user']['id'], 'Fixture API identity changed')
+            state.pop('serverTime', None)
+            result[key] = state
+        return result
+
+    def create_steps(self):
+        return [await_text('账户设置'), click('约定'), click('创建约定'),
+                select('所属关系', self.fixture['relationshipName']), fill('约定标题', self.new_title),
+                fill('达成条件', self.note), fill('目标次数', '1'), fill('完成截止日期', ''),
+                click('下一步：约定奖励'), fill('奖励内容', '合成恢复奖励：一起安排活动'),
+                fill('兑现天数', '7'), click('下一步：确认约定'), click('发出约定')]
 
     def current(self):
         items = []
@@ -183,14 +204,14 @@ class ResilienceVerification:
             require((configured['size'], configured['density'], configured['fontScale']) ==
                     ('640x1280', '320', '1.5'), 'Narrow display settings were not applied')
             self.report['displayDuringCheck'] = configured
-            greeting = self.fixture['accounts']['a']['displayName'] + '，欢迎回到我们的日常'
-            content = (greeting, '查看约定：' + self.fixture['agreementTitle'],
+            home_entry = '查看全部约定'
+            content = (home_entry, '查看约定：' + self.fixture['agreementTitle'],
                        '查看约定：' + self.fixture['agreementTitle'], self.fixture['relationshipName'])
             for index, (label, expected) in enumerate(zip(('首页', '约定', '奖励', '关系'), content), 1):
-                device.stage(f'01-narrow-{index}', [await_text(greeting), click(label),
+                device.stage(f'01-narrow-{index}', [await_text(home_entry), click(label),
                                                    await_text(expected), {'op': 'layout'}])
             device.stage('01-narrow-detail', self.detail() +
-                         [await_text('双方已确认，约定全部完成'), {'op': 'layout'}])
+                         [await_text('已兑现'), {'op': 'layout'}])
             self.report['checks']['narrowLayout'] = {'status': 'passed', 'widthDp': 320,
                                                     'fontScale': 1.5, 'screens': 5}
         finally:
@@ -208,22 +229,21 @@ class ResilienceVerification:
     def failed_write(self):
         device = self.devices['a']
         original = self.reverse_destination()
-        before = self.current()
-        save(self.output / '02-before.json', {'at': now(), 'agreement': before})
+        before = self.states()
+        save(self.output / '02-before.json', {'at': now(), 'states': before})
         proxy = failure_proxy(self.base)
         worker = threading.Thread(target=proxy.serve_forever, daemon=True)
         worker.start()
         try:
             device.command('reverse', f'tcp:{self.port}', f'tcp:{proxy.server_port}')
-            device.stage('02-failed-write-input-retained', self.detail() +
-                         [click('留下说明'), fill('说明', self.note), click('确认操作'),
-                          await_text('连接未完成。请检查网络后重试，输入已保留。'),
+            device.stage('02-failed-write-input-retained', self.create_steps() +
+                         [await_text('连接未完成。请检查网络后重试，输入已保留。'),
                           await_text(self.note)])
-            after = self.current()
-            require(before == after, 'Failed UI submission changed authoritative agreement state')
+            after = self.states()
+            require(before == after, 'Failed UI submission changed authoritative business state')
             require(proxy.counts['forwardedGets'] > 0 and proxy.counts['droppedPosts'] > 0,
                     'Proxy did not observe both GET and failed POST traffic')
-            save(self.output / '02-after.json', {'at': now(), 'agreement': after})
+            save(self.output / '02-after.json', {'at': now(), 'states': after})
             self.report['checks']['failedWrite'] = {'status': 'passed', **proxy.counts,
                 'versionUnchanged': True, 'eventsUnchanged': True, 'inputRetained': True,
                 'message': '连接未完成。请检查网络后重试，输入已保留。'}
@@ -242,32 +262,42 @@ class ResilienceVerification:
         return before
 
     def online_write(self, before):
-        self.devices['a'].stage('03-online-single-comment', self.detail() +
-                               [click('留下说明'), fill('说明', self.note), click('确认操作'),
-                                await_text('双方已确认，约定全部完成'), await_text(self.note)])
-        after = self.current()
-        require(after['version'] == before['version'] + 1, 'Online recovery wrote an unexpected version count')
-        require(after['events'][:-1] == before['events'], 'Online recovery changed previous events')
-        comments = [event for event in after['events']
-                    if event['action'] == 'comment' and event['note'] == self.note]
-        require(len(comments) == 1 and comments[0] == after['events'][-1],
-                'Online recovery must append exactly one synthetic comment')
-        require(comments[0]['actorId'] == self.fixture['accounts']['a']['user']['id']
-                and comments[0]['proxy'] is False, 'Recovery comment has wrong actor or source')
-        save(self.output / '03-after.json', {'at': now(), 'agreement': after})
-        self.report['checks']['onlineRecovery'] = {'status': 'passed', 'commentCount': 1,
+        self.devices['a'].stage('03-online-single-agreement', self.create_steps() +
+                               [await_text('待接受'), await_text(self.note)])
+        after = self.states()
+        created = []
+        for key in ('a', 'b'):
+            matches = [item for item in after[key]['agreements'] if item['title'] == self.new_title]
+            require(len(matches) == 1, 'Recovery must create exactly one agreement visible to each account')
+            item = matches[0]
+            require(item['version'] == 1 and [event['action'] for event in item['events']] == ['create']
+                    and item['conditions'] == self.note and item['taskState'] == 'proposed'
+                    and item['rewardState'] == 'unearned', 'Unexpected recovery agreement or history')
+            require(item['issuerId'] == self.fixture['accounts']['a']['user']['id']
+                    and item['executorId'] == self.fixture['accounts']['b']['user']['id']
+                    and item['events'][0]['actorId'] == item['issuerId'] and not item['events'][0]['proxy'],
+                    'Recovery has wrong roles or provenance')
+            remaining = dict(after[key])
+            remaining['agreements'] = [row for row in remaining['agreements'] if row['id'] != item['id']]
+            require(remaining == before[key], 'Recovery changed existing business state')
+            created.append(item)
+        require(created[0] == created[1], 'Accounts disagree on the recovery agreement')
+        self.current()
+        save(self.output / '03-after.json', {'at': now(), 'states': after})
+        self.report['checks']['onlineRecovery'] = {'status': 'passed', 'agreementCount': 1,
             'bothAccountsAgree': True, 'retryMethod': 'New UI form after network restoration'}
         self.persist()
 
     def restart(self):
-        before = self.current()
+        before = self.states()
         for key, device in self.devices.items():
             device.command('shell', 'am', 'force-stop', PACKAGE)
-            device.stage('04-restart-' + key, self.detail() +
-                         [await_text('双方已确认，约定全部完成'), await_text(self.note), {'op': 'layout'}])
-        require(self.current() == before, 'Restart changed authoritative agreement state')
-        self.report['checks']['applicationRestart'] = {'status': 'passed', 'devices': ['a', 'b'],
-                                                      'result': 'Settled reward and comment reloaded from API'}
+            device.stage('04-restart-' + key, [await_text('账户设置'), click('约定'),
+                         click('查看约定：' + self.new_title), await_text('待接受'), await_text(self.note), {'op': 'layout'}])
+        require(self.states() == before, 'Restart changed authoritative business state')
+        self.current()
+        self.report['checks']['applicationRestart'] = {'status': 'passed', 'devices': list(self.devices),
+                                                      'result': 'New agreement reloaded; original settled reward unchanged'}
         self.persist()
 
     def run(self):
@@ -294,7 +324,7 @@ class ResilienceVerification:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--fixture', default='artifacts/pact/pair/fixture.json')
-    parser.add_argument('--adb', default=str(Path(os.environ.get('ANDROID_HOME', '')) / 'platform-tools/adb.exe'))
+    parser.add_argument('--adb', default=default_adb())
     parser.add_argument('--evidence-dir', default='artifacts/pact/resilience')
     args = parser.parse_args()
     try:

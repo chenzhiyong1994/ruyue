@@ -1,47 +1,43 @@
 # Ruyue · 如约
 
-**Promises, kept together. · 把答应，变成相伴。**
+[简体中文](README.zh-CN.md) · [Project page](https://chenzhiyong1994.github.io/ruyue/) · [Development](docs/development.md) · [Testing](docs/testing.md)
 
-[简体中文](README.zh-CN.md) · [Project website](https://chenzhiyong1994.github.io/ruyue/) · [Development](docs/development.md) · [Contributing](CONTRIBUTING.md)
+**An unfinished, experimental Android prototype. Development is paused as of September 30, 2026.** This is a source-code snapshot for learning, experimentation, and independent forks. There is no commitment to continued development, maintenance, issue or pull-request responses, security fixes, or production readiness.
 
-Ruyue is an Android app for private agreements between people who know each other: couples, family members, or two people working toward a shared commitment. Agree on the conditions and a reward, record progress, review the result, and confirm that the reward was actually received.
+Ruyue helps people who know each other manage private agreements: define a goal and a reward, accept the terms, record progress, review completion, and mark the reward fulfilled. The interface is currently Simplified Chinese. The source snapshot is **1.4.3 / version code 12**.
 
-**This is a development preview, not a production service.** The repository contains the Android client and a backend you run yourself. There is no hosted account service or APK release to download; build the preview from source. The app interface is currently Simplified Chinese.
+The repository includes the Android client and a backend you run locally. It provides no hosted account service or downloadable APK release; build the development preview from source.
 
-## A promise has two outcomes
-
-Completing a task and receiving its reward are separate events:
+## What it does
 
 ```text
-Propose → Accept → Record progress → Submit → Review
-                                              ↓
-                                      Reward pending
-                                              ↓
-                                      Giver marks given
-                                              ↓
-                                      Recipient confirms receipt
+Awaiting acceptance → In progress → Awaiting review → Reward pending → Fulfilled
+待接受              待完成         待验收             待兑现           已兑现
 ```
 
-- **Private relationships:** invitations connect two real accounts; each relationship has its own records and access rules.
-- **Clear terms:** one-time and cumulative goals, optional deadlines, reward descriptions, and a three-step creation flow.
-- **Progress and evidence:** notes and photos support submission and review. Reaching a target does not automatically mean approval.
-- **Mutual confirmation:** changes require agreement; the giver cannot unilaterally settle a reward. Ending a relationship does not erase an earned reward.
-- **Explicit parent proxy mode:** a parent can record for a child without an account. Those actions retain their proxy origin; they are not presented as the child's independent confirmation.
-- **Shared state:** the backend controls permissions, versions, time, and state transitions. Failed network requests do not count as successful actions.
+The reward giver marks the reward fulfilled to close the agreement. The recipient does not confirm receipt a second time. Task completion and reward fulfillment remain separate states.
 
-There is no stranger marketplace, payment processing, points store, automatic punishment, background push notification service, or AI adjudication.
+- **Private relationships:** invitations connect two accounts, with records and permissions scoped to each relationship.
+- **Clear terms:** one-time or cumulative goals, optional deadlines, a reward, and a three-step creation flow. Changes to active terms require agreement.
+- **One progress history:** creation, acceptance, progress notes and photos, submission, review, and fulfillment appear together. There is no separate “leave a note” action.
+- **Explicit parent proxy mode:** a parent can record for a child without an account. The history identifies the actual actor and proxy source.
+- **Shared state:** the service controls permissions, versions, time, and transitions. Ending a relationship does not erase an earned reward.
+
+There is no stranger marketplace, payment processing, points store, automatic punishment, background push service, or AI adjudication.
 
 ## Screenshots
 
-Native Android screens with synthetic demonstration data.
+Native Android screens using synthetic demonstration data.
 
-| Daily view | Agreement details | Three-step creation |
+| Daily | Agreements | Rewards |
 | --- | --- | --- |
-| ![Daily view with a featured agreement](site/assets/home.png) | ![Agreement details, progress, and next action](site/assets/detail.png) | ![Create an agreement and define its reward](site/assets/create.png) |
+| ![Daily view grouped by relationship](site/assets/home.png) | ![Agreements grouped by relationship and status](site/assets/agreements.png) | ![Rewards and fulfillment status](site/assets/rewards.png) |
+
+The two decorative still-life illustrations were generated with AI and are bundled locally. Their source, prompts, and usage are documented in [Illustration provenance](docs/design/ruyue-illustrations.md).
 
 ## Run locally
 
-You need Python **3.11+**, **JDK 17**, and an Android SDK with **Platform 36**, SDK Build-Tools, and Platform-Tools. Set `JAVA_HOME` and `ANDROID_HOME` for your installations, and put `adb` on `PATH`. The app supports **Android 8.0 / API 26+**. Gradle is provided by the checked-in wrapper; the first build downloads dependencies.
+Prepare **Python 3.11+**, **JDK 17**, and an Android SDK with **Platform 36**, SDK Build-Tools, and Platform-Tools. Set `JAVA_HOME` and `ANDROID_HOME`, and add `adb` to `PATH`. The app supports **Android 8.0 / API 26+**. Use the included Gradle Wrapper; the first build requires internet access to download dependencies.
 
 ```sh
 git clone https://github.com/chenzhiyong1994/ruyue.git
@@ -49,7 +45,7 @@ cd ruyue
 python -m server --host 127.0.0.1 --port 8765 --database .local/pact/pact.sqlite3
 ```
 
-Use `python3` if that is the Python 3.11+ command on your system. The backend has no third-party Python dependencies. Keep it running, then build in another terminal at the repository root.
+Use `python3` if appropriate for your system. The backend uses only the Python standard library. Leave it running and build in another terminal from the repository root.
 
 **Windows PowerShell:**
 
@@ -63,33 +59,33 @@ Use `python3` if that is the Python 3.11+ command on your system. The backend ha
 sh android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
 ```
 
-The debug APK is `android/app/build/outputs/apk/debug/app-debug.apk`, with package ID `cn.zhiya.pact.preview`.
-
-To connect an Android device or emulator to this local development server, replace `<device-serial>` with the value shown by `adb devices`:
+Install the generated Debug APK on an explicitly selected test device. Replace `<device-serial>` with its value from `adb devices`:
 
 ```sh
 adb -s "<device-serial>" install -r android/app/build/outputs/apk/debug/app-debug.apk
 adb -s "<device-serial>" reverse tcp:8765 tcp:8765
 ```
 
-Open the app's **开发连接设置** (development connection settings), set the service address to `http://127.0.0.1:8765`, and register a test account. Repeat for a second device and account connected to the same backend to try the complete shared flow. `adb reverse` is only a local development connection, not remote hosting.
+Open **开发连接设置** (development connection settings), enter `http://127.0.0.1:8765`, and register a synthetic test account. Use a second device and a different account connected to the same backend to try the shared workflow. The Debug package is `cn.zhiya.pact.preview`. Do not uninstall or clear an existing app to force an installation.
 
-The backend is not production-deployed. Public operation needs HTTPS, production signing, account recovery, backup and restore procedures, and an operational security review. The static project website does not host account data or the API. See [development setup](docs/development.md) and [security](SECURITY.md).
+## Architecture and limits
 
-## Documentation
+The native Java client talks to a Python standard-library HTTP service, which stores accounts, relationships, agreements, events, and media in SQLite. The server is authoritative; both participants need the same backend. The [project page](https://chenzhiyong1994.github.io/ruyue/) is a static showcase and does not run the API.
+
+This prototype does not provide production hosting, account recovery, managed backups, operational support, or a maintained security support window. Debug signing and a successful local build are not production-readiness guarantees. Use synthetic data for evaluation. See [Security](SECURITY.md) before considering any deployment beyond local testing.
 
 | Document | Contents |
 | --- | --- |
-| [Development](docs/development.md) | Toolchain, local backend, Android builds, configuration |
-| [Testing](docs/testing.md) | Unit, HTTP, Android, and isolated two-device checks |
+| [Development](docs/development.md) | Toolchain, local service, Android build and configuration |
+| [Testing](docs/testing.md) | Unit, HTTP, Android and isolated native checks |
 | [User guide](docs/user-guide.md) | App walkthrough, in Chinese |
-| [Product requirements](docs/prd.md) | Scope and product rules, in Chinese |
-| [API contract](docs/api.md) | Endpoints, permissions, and state transitions, in Chinese |
-| [Architecture](docs/architecture.md) | Identity, storage, and consistency, in Chinese |
-| [Acceptance criteria](docs/acceptance.md) | Stable PA-001–PA-009 checks, in Chinese |
+| [Product scope](docs/prd.md) | Goals and product boundaries, in Chinese |
+| [API contract](docs/api.md) | Permissions and state transitions, in Chinese |
+| [Architecture](docs/architecture.md) | Storage and consistency, in Chinese |
+| [Acceptance criteria](docs/acceptance.md) | PA-001–PA-009 checks, in Chinese |
 
-## Contributing and license
+## Forks and license
 
-Small, focused fixes and improvements are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing a workflow or contract, and use [SECURITY.md](SECURITY.md) for vulnerability reports.
+Independent forks are welcome. Issues and pull requests may remain unanswered while development is paused; submitting one does not create a maintenance commitment. See [Contributing](CONTRIBUTING.md).
 
-Ruyue is licensed under the [MIT License](LICENSE). Bundled third-party components retain their own licenses; see [NOTICE](NOTICE).
+Ruyue is licensed under the [MIT License](LICENSE), without warranty. Third-party components retain their own licenses; see [NOTICE](NOTICE).

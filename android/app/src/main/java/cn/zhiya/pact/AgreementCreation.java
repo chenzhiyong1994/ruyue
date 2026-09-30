@@ -1,6 +1,8 @@
 package cn.zhiya.pact;
 
 import android.app.Activity;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.text.InputType;
 import android.view.View;
 import android.widget.AdapterView;
@@ -28,6 +30,7 @@ final class AgreementCreation {
     private final Sender sender;
     private final PactForm form;
     private final LinearLayout[] pages = new LinearLayout[3];
+    private final View[] stepSegments = new View[3];
     private final TextView stepLabel, heading, description, role;
     private final EditText title, conditions, count, due, reward, days;
     private final Spinner relationship;
@@ -40,20 +43,29 @@ final class AgreementCreation {
         this.relationships = relationships;
         this.userId = userId;
         this.sender = sender;
-        form = new PactForm(activity, "一份新的约定");
+        form = new PactForm(activity, "创建约定");
         stepLabel = PactUi.text(activity, "", 12, PactUi.MUTED);
-        heading = PactUi.serif(activity, "", 29);
+        heading = PactUi.title(activity, "", 24);
         description = PactUi.text(activity, "", 14, PactUi.MUTED);
-        form.fields.addView(stepLabel);
+        LinearLayout steps=PactUi.row(activity);
+        steps.addView(stepLabel,new LinearLayout.LayoutParams(0,-2,1));
+        for(int n=0;n<stepSegments.length;n++){
+            View segment=new View(activity);segment.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);stepSegments[n]=segment;
+            LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(PactUi.dp(activity,24),PactUi.dp(activity,4));params.leftMargin=PactUi.dp(activity,4);steps.addView(segment,params);
+        }
+        form.fields.addView(steps,new LinearLayout.LayoutParams(-1,-2));
+        PactUi.gap(activity,form.fields,8);
         form.fields.addView(heading);
-        form.fields.addView(description);
+        LinearLayout.LayoutParams descriptionParams=new LinearLayout.LayoutParams(-1,-2);descriptionParams.topMargin=PactUi.dp(activity,8);form.fields.addView(description,descriptionParams);
+        PactUi.gap(activity,form.fields,24);
         for (int n = 0; n < pages.length; n++) {
             pages[n] = PactUi.column(activity);
             form.fields.addView(pages[n]);
         }
 
         LinearLayout relationCard = PactUi.card(activity, pages[0]);
-        relationCard.addView(PactUi.text(activity, "与谁，认真说好一件事", 13, PactUi.MUTED));
+        tintCard(relationCard, false);
+        relationCard.addView(PactUi.text(activity, "所属关系", 13, PactUi.MUTED));
         List<String> names = new ArrayList<>();
         int selected = 0;
         for (int n = 0; n < relationships.size(); n++) {
@@ -67,35 +79,34 @@ final class AgreementCreation {
         ArrayAdapter<String> adapter = new ArrayAdapter<>(activity, android.R.layout.simple_spinner_item, names);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         relationship.setAdapter(adapter);
+        PactUi.styleSpinner(activity,relationship);
         relationship.setSelection(selected);
         relationCard.addView(relationship, new LinearLayout.LayoutParams(-1, -2));
-        role = PactUi.text(activity, "", 13, PactUi.MUTED);
+        role = PactUi.text(activity, "", 12, PactUi.MUTED);
+        PactUi.gap(activity,relationCard,4);
         relationCard.addView(role);
+        PactUi.gap(activity,pages[0],8);
         relationship.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             public void onNothingSelected(AdapterView<?> parent) { }
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) { updateRole(); }
         });
         title = PactUi.input(activity, pages[0], "约定标题", "", false);
-        title.setHint("给这件小事，起个名字");
+        title.setHint("例如：晚饭后散步 4 次");
         conditions = PactUi.input(activity, pages[0], "达成条件", "", true);
-        conditions.setHint("怎样才算完成？把彼此的期待说清楚");
+        conditions.setHint("填写可以核对的完成条件");
         count = PactUi.input(activity, pages[0], "目标次数", "1", false);
         count.setInputType(InputType.TYPE_CLASS_NUMBER);
         due = PactUi.input(activity, pages[0], "完成截止日期", "", false);
         due.setHint("yyyy-MM-dd，留空为不限期");
 
-        LinearLayout rewardHero = PactUi.hero(activity, pages[1]);
-        rewardHero.addView(PactUi.badge(activity, "留给做到的那一天"));
-        rewardHero.addView(PactUi.serif(activity, "一点相伴的时间，\n也可以是很好的奖励。", 23));
-        PactUi.art(activity, rewardHero, 64);
         reward = PactUi.input(activity, pages[1], "奖励内容", "", true);
-        reward.setHint("完成后，我答应对方什么？");
+        reward.setHint("填写验收通过后给予的奖励");
         days = PactUi.input(activity, pages[1], "兑现天数", "7", false);
         days.setInputType(InputType.TYPE_CLASS_NUMBER);
         pages[1].addView(PactUi.text(activity,
-                "验收达成后开始计算兑现时间。奖励给出后，还需要收讫确认。", 13, PactUi.MUTED));
+                "验收通过后开始计算兑现时间，由兑现方标记已兑现。", 13, PactUi.MUTED));
 
-        previous = PactUi.button(activity, "上一步", false, v -> back());
+        previous = PactUi.textButton(activity, "上一步", v -> back());
         updateRole();
         form.setBackAction(this::back);
         form.showFullscreen("下一步：约定奖励", v -> next());
@@ -115,9 +126,12 @@ final class AgreementCreation {
     private String otherName() { return otherMember().optString("name", "对方"); }
     private boolean proxy() { return "proxy".equals(selectedRelationship().optString("mode")); }
     private void updateRole() {
-        String value = otherName() + "来完成，我来验收与兑现。"
-                + (proxy() ? "\n家长代记：接受、执行和收讫会标明代记来源。" : "\n发出后，等对方接受才开始。仅彼此可见。");
+        String value = otherName() + "完成 · 我验收与兑现"
+                + (proxy() ? "\n家长代记，操作会标明来源。" : "");
         role.setText(value);
+        description.setText(activity.getString(R.string.creation_relationship_context,
+                selectedRelationship().optString("name"), otherName(),
+                proxy() ? activity.getString(R.string.creation_proxy_suffix) : ""));
     }
 
     private void next() {
@@ -134,13 +148,19 @@ final class AgreementCreation {
     }
 
     private void renderStep() {
-        String[] titles = {"想一起，做点什么？", "给做到的那天，\n一点期待。", "最后，一起说清楚。"};
-        String[] descriptions = {"从一件小事开始，给彼此一点期待。", "奖励可以很小，认真兑现就很好。", "发出之前，再看看彼此答应了什么。"};
+        String[] titles = {"约定内容", "奖励设置", "确认约定"};
         String[] actions = {"下一步：约定奖励", "下一步：确认约定", "发出约定"};
-        stepLabel.setText(String.format(Locale.getDefault(), "STEP %02d / 03", step + 1));
+        stepLabel.setText(String.format(Locale.getDefault(), "步骤 %d / 3", step + 1));
         stepLabel.setContentDescription(String.format(Locale.getDefault(), "创建第 %d 步，共 3 步", step + 1));
+        for(int n=0;n<stepSegments.length;n++){
+            GradientDrawable segment;
+            if(n==step)segment=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{PactUi.ROSE,Color.rgb(184,117,145)});
+            else segment=PactUi.background(n<step?Color.rgb(215,174,190):PactUi.LINE,0);
+            segment.setCornerRadius(PactUi.dp(activity,2));stepSegments[n].setBackground(segment);
+        }
         heading.setText(titles[step]);
-        description.setText(descriptions[step]);
+        description.setVisibility(step == 1 ? View.VISIBLE : View.GONE);
+        updateRole();
         for (int n = 0; n < pages.length; n++) pages[n].setVisibility(n == step ? View.VISIBLE : View.GONE);
         previous.setVisibility(step == 0 ? View.GONE : View.VISIBLE);
         form.submit.setText(actions[step]);
@@ -153,26 +173,38 @@ final class AgreementCreation {
 
     private void preview() {
         pages[2].removeAllViews();
-        LinearLayout card = PactUi.hero(activity, pages[2]);
-        card.addView(PactUi.badge(activity, selectedRelationship().optString("name") + " · 等你发出"));
-        card.addView(PactUi.serif(activity, title.getText().toString(), 25));
+        LinearLayout card = PactUi.card(activity, pages[2]);
+        tintCard(card, true);
+        card.addView(PactUi.badge(activity, selectedRelationship().optString("name") + " · 待发出"));
+        PactUi.gap(activity,card,12);
+        card.addView(PactUi.title(activity, title.getText().toString(), 22));PactUi.gap(activity,card,12);
+        PactUi.divider(activity,card);PactUi.gap(activity,card,12);
         previewTerm(card, "完成条件", conditions.getText().toString());
         previewTerm(card, "目标与截止", count.getText().toString() + " 次 · "
                 + (due.getText().toString().trim().isEmpty() ? "不限期" : due.getText().toString().trim() + " 前"));
-        previewTerm(card, "答应的奖励", reward.getText().toString());
+        previewTerm(card, "奖励内容", reward.getText().toString());
         previewTerm(card, "兑现时间", "达成后 " + days.getText().toString() + " 天内");
         LinearLayout roles = PactUi.card(activity, pages[2]);
-        roles.addView(PactUi.title(activity, "彼此的角色", 17));
+        tintCard(roles, false);
+        roles.addView(PactUi.title(activity, "双方角色", 17));
+        PactUi.gap(activity,roles,12);
         roles.addView(PactUi.text(activity, otherName() + "负责完成，我负责验收与兑现。", 15, PactUi.INK));
+        PactUi.gap(activity,roles,8);
         roles.addView(PactUi.text(activity, proxy()
-                ? "本约定由家长代记。代为接受、提交与收讫均会记录实际操作人，不代表孩子独立确认。"
-                : "对方接受后，约定才会生效。生效后，修改条款需要双方同意；奖励给出后，由对方确认收到。", 13, PactUi.MUTED));
-        pages[2].addView(PactUi.button(activity, "存为草稿", false, v -> send(false)));
+                ? "本约定由家长代记。代为接受与提交均会记录实际操作人，不代表孩子独立确认。奖励由兑现方标记完成。"
+                : "对方接受后，约定才会生效。生效后，修改条款需要双方同意；兑现方标记已兑现后，约定结束。", 13, PactUi.MUTED));
+        pages[2].addView(PactUi.textButton(activity, "存为草稿", v -> send(false)));
     }
 
     private void previewTerm(LinearLayout parent, String label, String value) {
-        parent.addView(PactUi.text(activity, label, 12, PactUi.MUTED));
-        parent.addView(PactUi.text(activity, value, 16, PactUi.INK));
+        PactUi.meta(activity,parent,label,value);
+    }
+
+    private void tintCard(LinearLayout card, boolean confirm) {
+        GradientDrawable surface=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                confirm?new int[]{Color.rgb(255,253,251),Color.rgb(249,239,244),Color.rgb(247,242,250)}
+                        :new int[]{Color.rgb(255,253,251),Color.rgb(248,243,248)});
+        surface.setCornerRadius(PactUi.dp(activity,20));surface.setStroke(PactUi.dp(activity,1),PactUi.LINE);card.setBackground(surface);
     }
 
     private boolean validFirstStep() {

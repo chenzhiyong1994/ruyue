@@ -341,6 +341,9 @@ class Service:
 
     def _agreement_view(self, item):
         result = dict(item)
+        if result['rewardState'] == 'offered':
+            # Older records already contain the giver's mark; keep their audit history intact.
+            result['rewardState'] = 'received'
         if result['taskState'] == 'active' and result['dueAt'] is not None and parse_time(result['dueAt']) < self.now:
             result['taskState'] = 'expired'
         return result
@@ -411,14 +414,16 @@ class Service:
         item, relationship = self._agreement(agreement_id, user['id'])
         self._version(item, body)
         action = body.get('action')
+        if action in ('receive', 'dispute'):
+            fail(409, 'retired_action', '奖励由兑现方标记已兑现后结束，收讫确认和未收到反馈已停用')
         if relationship['status'] == 'ended':
-            if item['taskState'] != 'achieved' or action not in ('give', 'receive', 'dispute', 'propose_amend', 'resolve_proposal'):
+            if item['taskState'] != 'achieved' or action not in ('give', 'propose_amend', 'resolve_proposal'):
                 fail(409, 'relationship_ended', '关系已解除，仅可处理既有奖励')
         proxy, details = False, {}
         note = string(body, 'note', 2000, required=False)
         if action in ('edit', 'publish', 'withdraw', 'review', 'give'):
             proxy = self._role(item, relationship, user['id'], 'issuer')
-        elif action in ('accept', 'decline', 'progress', 'submit', 'receive', 'dispute'):
+        elif action in ('accept', 'decline', 'progress', 'submit'):
             proxy = self._role(item, relationship, user['id'], 'executor')
         if action == 'edit':
             self._require_state(item, 'draft', 'proposed')
@@ -473,14 +478,11 @@ class Service:
                 item['taskState'] = 'active'
                 item = self._agreement_view(item)
             details = {'approved': approved}
-        elif action in ('give', 'receive', 'dispute'):
+        elif action == 'give':
             self._require_state(item, 'achieved')
-            expected = 'pending' if action == 'give' else 'offered'
-            if item['rewardState'] != expected:
+            if item['rewardState'] != 'pending':
                 fail(409, 'invalid_reward_state', '奖励状态已变化，请刷新')
-            if action == 'dispute' and not note:
-                fail(400, 'note_required', '请说明尚未收到的情况')
-            item['rewardState'] = {'give': 'offered', 'receive': 'received', 'dispute': 'pending'}[action]
+            item['rewardState'] = 'received'
         elif action == 'comment':
             if item['taskState'] == 'draft' or not note:
                 fail(400, 'note_required', '请填写约定说明')
@@ -489,7 +491,7 @@ class Service:
             if item['proposal'] is not None:
                 fail(409, 'proposal_pending', '请先处理当前协商')
             if item['rewardState'] == 'received':
-                fail(409, 'already_settled', '奖励已收讫，不能重新修改')
+                fail(409, 'already_settled', '奖励已兑现，不能重新修改')
             kind = 'amend' if action == 'propose_amend' else 'cancel'
             if kind == 'cancel':
                 if item['taskState'] == 'achieved':
@@ -514,7 +516,7 @@ class Service:
             details = {'proposal': proposal, 'approved': approved}
             if approved:
                 if item['rewardState'] == 'received':
-                    fail(409, 'already_settled', '奖励已收讫，不能修改')
+                    fail(409, 'already_settled', '奖励已兑现，不能修改')
                 if proposal['kind'] == 'cancel':
                     self._require_state(item, 'active', 'submitted', 'expired')
                     item['taskState'] = 'cancelled'

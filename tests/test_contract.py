@@ -74,19 +74,23 @@ class ContractTests(unittest.TestCase):
         item = self.action(item, executor, "accept")
         self.assertEqual("active", item["taskState"])
 
-    def test_shared_reward_cannot_be_received_by_its_giver(self):
+    def test_issuer_marks_reward_settled_without_executor_confirmation(self):
         issuer, executor, relationship = self.pair()
         item = self.achieve(issuer, executor, relationship)
-        item = self.action(item, issuer, "give", note="已经给出")
-        self.action(item, issuer, "receive", status=403)
-        self.assertEqual("offered", self.current(executor, item)["rewardState"])
-        item = self.action(item, executor, "dispute", note="目前还没有收到")
-        self.assertEqual(("achieved", "pending"), (item["taskState"], item["rewardState"]))
-        item = self.action(item, issuer, "give", note="重新约定交付后已给出")
-        item = self.action(item, executor, "receive")
+        self.action(item, executor, "give", status=403)
+        item = self.action(item, issuer, "give", note="兑现方标记已兑现")
         self.assertEqual("received", item["rewardState"])
         self.assertEqual("independent", item["confirmationMode"])
+        self.assertEqual(["create", "accept", "submit", "review", "give"],
+                         [event["action"] for event in item["events"]])
         self.assertTrue(all(event["proxy"] is False for event in item["events"]))
+        self.assertEqual(issuer["user"]["id"], item["events"][-1]["actorId"])
+        for action in ("receive", "dispute"):
+            for actor in (issuer, executor):
+                result = self.action(item, actor, action, status=409, note="旧版本动作")
+                self.assertEqual("retired_action", result["error"]["code"])
+        self.assertEqual(item, self.current(issuer, item))
+        self.assertEqual(item, self.current(executor, item))
 
     def test_stale_version_fails_without_changing_progress_or_events(self):
         issuer, executor, relationship = self.pair()
@@ -97,6 +101,35 @@ class ContractTests(unittest.TestCase):
         progressed = self.action(current, executor, "progress", amount=1, note="刷新后记录")
         self.assertEqual(1, progressed["progressCount"])
         self.assertEqual(current["version"] + 1, progressed["version"])
+
+    def test_event_history_contains_creation_acceptance_and_full_progress_evidence(self):
+        issuer, executor, relationship = self.pair()
+        image = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aB1UAAAAASUVORK5CYII=")
+        media = self.write("/v1/media", executor, mime="image/png", data=base64.b64encode(image).decode())
+        item = self.agreement(issuer, executor, relationship, targetCount=3)
+        created = item["events"][0]
+        self.assertEqual("create", created["action"])
+        self.assertEqual(issuer["user"]["id"], created["actorId"])
+        self.assertTrue(created["details"]["published"])
+        self.assertEqual("一次约定", created["details"]["terms"]["title"])
+        item = self.action(item, executor, "accept")
+        item = self.action(item, executor, "progress", amount=2, note="两次散步记录", mediaIds=[media["id"]])
+        self.assertEqual(["create", "accept", "progress"], [event["action"] for event in item["events"]])
+        accepted, progressed = item["events"][1:]
+        self.assertEqual(executor["user"]["id"], accepted["actorId"])
+        self.assertFalse(accepted["proxy"])
+        evidence = progressed["details"]["progress"]
+        self.assertEqual(2, evidence["amount"])
+        self.assertEqual("两次散步记录", evidence["note"])
+        self.assertEqual([media["id"]], evidence["mediaIds"])
+        self.assertEqual(executor["user"]["id"], evidence["actorId"])
+        self.assertFalse(evidence["proxy"])
+        self.assertTrue(evidence["id"])
+        self.assertEqual(progressed["at"], evidence["at"])
+        self.assertEqual([evidence], item["progress"])
+        self.assertEqual(item["events"], self.current(issuer, item)["events"])
+        self.assertEqual(item["events"], self.current(executor, item)["events"])
 
     def test_identical_retry_replays_but_request_id_cannot_change_action_or_payload(self):
         issuer, executor, relationship = self.pair()
@@ -153,7 +186,6 @@ class ContractTests(unittest.TestCase):
         self.action(item, issuer, "comment", status=409, note="解除后普通互动应停止")
         self.action(item, issuer, "propose_cancel", status=409, note="不能取消已达成奖励")
         item = self.action(item, issuer, "give", note="兑现解除前已达成的奖励")
-        item = self.action(item, executor, "receive")
         self.assertEqual("received", self.current(issuer, item)["rewardState"])
         self.assertEqual("ended", self.state(issuer)["relationships"][0]["status"])
 
@@ -167,18 +199,20 @@ class ContractTests(unittest.TestCase):
         item = self.action(item, parent, "submit", note="家长记录孩子已完成")
         item = self.action(item, parent, "review", approved=True)
         item = self.action(item, parent, "give", note="家长记录奖励已给出")
-        item = self.action(item, parent, "receive")
         self.assertEqual(child["id"], item["executorId"])
         self.assertNotEqual(parent["user"]["id"], item["executorId"])
         self.assertEqual("proxy", item["confirmationMode"])
         self.assertEqual("received", item["rewardState"])
-        delegated = [event for event in item["events"] if event["action"] in {"accept", "submit", "receive"}]
-        self.assertEqual(3, len(delegated))
+        delegated = [event for event in item["events"] if event["action"] in {"accept", "submit"}]
+        self.assertEqual(2, len(delegated))
         for event in delegated:
             self.assertIs(event["proxy"], True)
             self.assertEqual(parent["user"]["id"], event["actorId"])
         self.assertIs(item["submission"]["proxy"], True)
         self.assertEqual(parent["user"]["id"], item["submission"]["actorId"])
+        self.assertEqual("give", item["events"][-1]["action"])
+        self.assertEqual(parent["user"]["id"], item["events"][-1]["actorId"])
+        self.assertIs(item["events"][-1]["proxy"], False, "The parent settles their own promise, not a child's receipt")
 
     def test_media_becomes_visible_only_to_its_agreement_and_cannot_be_relinked_by_viewer(self):
         issuer, executor, relationship = self.pair()

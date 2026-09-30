@@ -2,4 +2,6 @@
     <string name="app_name">如约</string>
     <string name="brand_tagline">把答应，变成相伴。</string>
     <string name="photos_added">已添加 %1$d 张照片</string>
+    <string name="creation_relationship_context">所属关系：%1$s\n%2$s负责完成 · 我负责验收与兑现%3$s</string>
+    <string name="creation_proxy_suffix">\u0020· 家长代记</string>
 </resources>

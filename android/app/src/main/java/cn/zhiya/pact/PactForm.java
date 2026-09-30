@@ -2,12 +2,15 @@ package cn.zhiya.pact;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -27,18 +30,32 @@ final class PactForm {
     private final ScrollView scroll;
     private Button close;
     private LinearLayout footer;
+    private LinearLayout actionBar;
     private Runnable backAction;
     private Runnable unregisterSystemBack;
     PactForm(Context context, String title) {
         this.context=context;this.title=title;
-        fields=PactUi.column(context); fields.setPadding(PactUi.dp(context,22),PactUi.dp(context,8),PactUi.dp(context,22),PactUi.dp(context,14));
+        fields=PactUi.column(context); fields.setPadding(PactUi.dp(context,24),0,PactUi.dp(context,24),PactUi.dp(context,20));
         error=PactUi.text(context,"",14,PactUi.ORANGE); error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        scroll=new ScrollView(context); scroll.setFillViewport(true); scroll.addView(fields);scroll.setClipToPadding(false);
-        dialog=new AlertDialog.Builder(context).setTitle(title).setView(scroll).setNegativeButton("返回",null).create();
+        error.setVisibility(View.GONE);error.setPadding(0,0,0,PactUi.dp(context,12));
+        error.addTextChangedListener(new android.text.TextWatcher(){
+            public void beforeTextChanged(CharSequence s,int start,int count,int after){}
+            public void onTextChanged(CharSequence s,int start,int before,int count){error.setVisibility(s.length()==0?View.GONE:View.VISIBLE);}
+            public void afterTextChanged(android.text.Editable text){}
+        });
+        scroll=new ScrollView(context); scroll.setFillViewport(true); scroll.addView(fields);scroll.setClipToPadding(false);scroll.setVerticalScrollBarEnabled(false);
+        LinearLayout modalHeader=PactUi.row(context);modalHeader.setPadding(PactUi.dp(context,24),PactUi.dp(context,24),PactUi.dp(context,24),PactUi.dp(context,20));
+        TextView modalTitle=PactUi.title(context,title,21);modalHeader.addView(modalTitle,new LinearLayout.LayoutParams(0,-2,1));
+        ImageView mark=brandMark();LinearLayout.LayoutParams markParams=new LinearLayout.LayoutParams(PactUi.dp(context,24),PactUi.dp(context,24));markParams.leftMargin=PactUi.dp(context,12);modalHeader.addView(mark,markParams);
+        dialog=new AlertDialog.Builder(context).setCustomTitle(modalHeader).setView(scroll).setNegativeButton("返回",null).create();
     }
     void show(String label, View.OnClickListener listener) {
+        int precedingMargin=0;
+        if(fields.getChildCount()>0){ViewGroup.LayoutParams previous=fields.getChildAt(fields.getChildCount()-1).getLayoutParams();if(previous instanceof LinearLayout.LayoutParams)precedingMargin=((LinearLayout.LayoutParams)previous).bottomMargin;}
+        int actionGap=Math.max(0,PactUi.dp(context,12)-precedingMargin);
+        if(actionGap>0)fields.addView(new View(context),new LinearLayout.LayoutParams(1,actionGap));
         fields.addView(error); submit=PactUi.button(fields.getContext(),label,true,listener); fields.addView(submit); dialog.show();
-        styleWindow(false);Button back=dialog.getButton(AlertDialog.BUTTON_NEGATIVE);if(back!=null)back.setTextColor(PactUi.ROSE);
+        styleWindow(false);Button back=dialog.getButton(AlertDialog.BUTTON_NEGATIVE);if(back!=null){back.setTextColor(PactUi.ROSE);back.setTextSize(14);back.setAllCaps(false);back.setIncludeFontPadding(false);back.setMinHeight(PactUi.dp(context,48));}
     }
     /** Full-screen native form with scrollable fields and a persistent action area. */
     void showFullscreen(String label,View.OnClickListener listener) {
@@ -47,13 +64,14 @@ final class PactForm {
         // be safely detached, while preserving the same AlertDialog API for callers.
         dialog.show();ViewGroup originalParent=(ViewGroup)scroll.getParent();if(originalParent!=null)originalParent.removeView(scroll);
         LinearLayout page=PactUi.column(context);page.setBackground(PactUi.pageBackground(context));
-        LinearLayout header=PactUi.row(context);header.setPadding(PactUi.dp(context,16),PactUi.dp(context,13),PactUi.dp(context,20),PactUi.dp(context,12));
+        LinearLayout header=PactUi.row(context);header.setPadding(PactUi.dp(context,12),PactUi.dp(context,4),PactUi.dp(context,12),PactUi.dp(context,16));
+        header.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,new int[]{Color.argb(100,255,255,255),Color.argb(70,246,231,240)}));
         close=PactUi.iconButton(context,"返回","back",v->navigateBack());header.addView(close);
-        TextView heading=PactUi.serif(context,title,21);heading.setGravity(Gravity.CENTER);header.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
-        View balance=new View(context);header.addView(balance,new LinearLayout.LayoutParams(PactUi.dp(context,36),1));page.addView(header);
+        TextView heading=PactUi.title(context,title,17);heading.setGravity(Gravity.CENTER);header.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
+        ImageView balance=brandMark();balance.setPadding(PactUi.dp(context,14),PactUi.dp(context,14),PactUi.dp(context,14),PactUi.dp(context,14));header.addView(balance,new LinearLayout.LayoutParams(PactUi.dp(context,48),PactUi.dp(context,48)));page.addView(header);
         page.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        footer=PactUi.column(context);footer.setPadding(PactUi.dp(context,22),PactUi.dp(context,5),PactUi.dp(context,22),PactUi.dp(context,15));
-        footer.setBackgroundColor(PactUi.BACKGROUND);footer.addView(error);footer.addView(submit);page.addView(footer,new LinearLayout.LayoutParams(-1,-2));
+        PactUi.divider(context,page);footer=PactUi.column(context);footer.setPadding(PactUi.dp(context,24),PactUi.dp(context,12),PactUi.dp(context,24),PactUi.dp(context,12));
+        footer.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{Color.rgb(255,253,251),Color.rgb(248,240,246)}));footer.addView(error);actionBar=PactUi.row(context);actionBar.setGravity(Gravity.CENTER_VERTICAL);actionBar.addView(submit,new LinearLayout.LayoutParams(0,-2,1));footer.addView(actionBar);page.addView(footer,new LinearLayout.LayoutParams(-1,-2));
         page.setOnApplyWindowInsetsListener((view,insets)->{
             if(android.os.Build.VERSION.SDK_INT>=30){
                 android.graphics.Insets safe=insets.getInsets(android.view.WindowInsets.Type.systemBars()|android.view.WindowInsets.Type.displayCutout());
@@ -114,12 +132,17 @@ final class PactForm {
     void addFooterAction(View action) {
         if(footer==null)throw new IllegalStateException("Show the full-screen form before adding a footer action.");
         ViewGroup oldParent=(ViewGroup)action.getParent();if(oldParent!=null)oldParent.removeView(action);
-        footer.addView(action,footer.indexOfChild(submit));
+        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-2,-2);params.rightMargin=PactUi.dp(context,16);actionBar.addView(action,0,params);
+    }
+    private ImageView brandMark() {
+        ImageView mark=new ImageView(context);mark.setImageDrawable(new PactIcon("rings",PactUi.ROSE));mark.setScaleType(ImageView.ScaleType.CENTER_INSIDE);mark.setAlpha(.55f);mark.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);return mark;
     }
     private void styleWindow(boolean fullscreen) {
         Window window=dialog.getWindow();if(window==null)return;
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        window.setBackgroundDrawable(PactUi.background(PactUi.BACKGROUND,fullscreen?0:PactUi.dp(context,27)));
+        GradientDrawable surface=fullscreen?PactUi.background(PactUi.BACKGROUND,0):new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{Color.rgb(255,253,251),Color.rgb(250,244,247)});
+        if(!fullscreen){surface.setCornerRadius(PactUi.dp(context,26));surface.setStroke(PactUi.dp(context,1),PactUi.LINE);}
+        window.setBackgroundDrawable(surface);
         if(fullscreen){
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT);window.setGravity(Gravity.CENTER);
             window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
@@ -133,6 +156,7 @@ final class PactForm {
         busy=value;if(submit!=null)submit.setEnabled(!value);dialog.setCancelable(!value);
         Button back=dialog.getButton(AlertDialog.BUTTON_NEGATIVE);if(back!=null)back.setEnabled(!value);if(close!=null)close.setEnabled(!value);
         if(footer!=null)for(int i=0;i<footer.getChildCount();i++){View action=footer.getChildAt(i);if(action!=error&&action!=submit)action.setEnabled(!value);}
+        if(actionBar!=null)for(int i=0;i<actionBar.getChildCount();i++)actionBar.getChildAt(i).setEnabled(!value);
     }
     void fail(String message) { busy(false);error.setText(message); }
 }

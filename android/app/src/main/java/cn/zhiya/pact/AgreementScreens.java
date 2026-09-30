@@ -25,14 +25,31 @@ final class AgreementScreens {
     private LinearLayout surface;
     private boolean rewards;
     private String detailId = "", statusFilter = "全部";
+    private int listScrollY;
     private AttachmentDraft picking;
     private static final int PICK_PHOTO = 4021;
 
     AgreementScreens(Activity activity, ApiClient api, Supplier<JSONObject> state, Supplier<String> relationshipFilter, Runnable refresh, Runnable expired) {
         this.activity=activity; this.api=api; this.state=state; this.relationshipFilter=relationshipFilter; this.refresh=refresh; this.expired=expired;
     }
-    void resetDetail() { detailId=""; }
-    void open(String agreementId) { detailId=agreementId==null?"":agreementId; }
+    void resetDetail() { detailId="";listScrollY=0; }
+    void showAll() { resetDetail();statusFilter="全部"; }
+    void open(String agreementId) { detailId=agreementId==null?"":agreementId;listScrollY=0; }
+    private ScrollView scrollHost(){
+        android.view.ViewParent parent=surface.getParent();
+        while(parent!=null){if(parent instanceof ScrollView)return (ScrollView)parent;parent=parent.getParent();}
+        return null;
+    }
+    private void scrollTo(int y){
+        LinearLayout target=surface;
+        target.getViewTreeObserver().addOnGlobalLayoutListener(new android.view.ViewTreeObserver.OnGlobalLayoutListener(){
+            @Override public void onGlobalLayout(){
+                if(target.getViewTreeObserver().isAlive())target.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                if(target!=surface)return;ScrollView scroll=scrollHost();if(scroll!=null)scroll.scrollTo(0,y);
+            }
+        });
+        target.requestLayout();
+    }
     private JSONArray array(String name) { return state.get().optJSONArray(name)==null?new JSONArray():state.get().optJSONArray(name); }
     private String me() { JSONObject user=state.get().optJSONObject("user"); return user==null?"":user.optString("id"); }
     private JSONObject find(String collection,String id) { JSONArray rows=array(collection); for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null&&id.equals(row.optString("id")))return row;}return null; }
@@ -42,88 +59,125 @@ final class AgreementScreens {
     private boolean executor(JSONObject item) { JSONObject r=relation(item); return me().equals(item.optString("executorId"))||(r!=null&&proxy(item)&&me().equals(r.optString("ownerId"))); }
     private boolean activeRelation(JSONObject item) { JSONObject r=relation(item);return r!=null&&"active".equals(r.optString("status")); }
     private String member(JSONObject item,String id) { JSONObject r=relation(item); if(r!=null){JSONArray members=r.optJSONArray("members");for(int i=0;members!=null&&i<members.length();i++){JSONObject m=members.optJSONObject(i);if(id.equals(m.optString("id")))return m.optString("name");}}return "关系成员"; }
-    private void text(LinearLayout parent,String value,int size) { parent.addView(PactUi.text(activity,value,size,PactUi.INK)); }
-    private void button(LinearLayout parent,String label,boolean primary,Runnable action) { parent.addView(PactUi.button(activity,label,primary,v->action.run())); }
+    private void text(LinearLayout parent,String value,int size) { if(parent.getChildCount()>0)PactUi.gap(activity,parent,8);parent.addView(PactUi.text(activity,value,size,PactUi.INK)); }
+    private void button(LinearLayout parent,String label,boolean primary,Runnable action) { if(parent.getChildCount()>0)PactUi.gap(activity,parent,8);parent.addView(PactUi.button(activity,label,primary,v->action.run())); }
 
     void render(LinearLayout parent,boolean rewards) {
         surface=parent;this.rewards=rewards;
         if(!detailId.isEmpty()){JSONObject item=find("agreements",detailId);if(item!=null){detail(item);return;}detailId="";}
-        parent.addView(PactUi.text(activity,rewards?"PROMISES, KEPT":"OUR LITTLE PACTS",11,PactUi.MUTED));
-        parent.addView(PactUi.serif(activity,rewards?"把心意，\n认真交到彼此手里。":"说好的小事，\n一起慢慢做到。",28));
-        parent.addView(PactUi.text(activity,rewards?"任务达成以后，还有一份期待值得兑现。":"每一次认真约定，都是对彼此的在意。",14,PactUi.MUTED));
-        if(rewards)rewardSummary(parent);else button(parent,"创建约定",true,this::create);
-        addFilters(parent);
-        int count=0;
+        List<String> filters=rewards?Arrays.asList("全部","待兑现","已兑现"):Arrays.asList("全部","待接受","待完成","待验收","待兑现","已兑现","草稿","已结束");
+        if(!filters.contains(statusFilter))statusFilter="全部";
+        Map<String,List<JSONObject>> groups=new LinkedHashMap<>();
         JSONArray agreements=array("agreements");
-        for(int i=agreements.length()-1;i>=0;i--){JSONObject item=agreements.optJSONObject(i);if(item==null||!matches(item))continue;count++;
-            if(rewards)rewardCard(parent,item);else agreementCard(parent,item);
+        for(int i=agreements.length()-1;i>=0;i--){JSONObject item=agreements.optJSONObject(i);if(item==null||!matches(item))continue;
+            groups.computeIfAbsent(item.optString("relationshipId"),key->new ArrayList<>()).add(item);
         }
-        if(count==0){LinearLayout empty=PactUi.hero(activity,parent);PactUi.art(activity,empty,82);empty.addView(PactUi.serif(activity,rewards?"心意，会在这里留下。":"从一件小事开始。",23));text(empty,rewards?"符合筛选条件的已达成奖励，会在这里等待兑现与收讫。":"还没有符合条件的约定。想和重要的人，一起完成什么？",14);}
+        if(rewards&&!groups.isEmpty())PactMood.banner(activity,parent,true);
+        addFilters(parent,filters);
+        PactUi.gap(activity,parent,16);
+        boolean first=true;
+        for(Map.Entry<String,List<JSONObject>> entry:groups.entrySet()){
+            LinearLayout group=relationshipGroup(parent,entry.getKey(),entry.getValue().size(),first);first=false;
+            boolean firstItem=true;
+            for(JSONObject item:entry.getValue()){
+                if(!firstItem){LinearLayout inset=PactUi.column(activity);inset.setPadding(PactUi.dp(activity,16),0,PactUi.dp(activity,16),0);PactUi.divider(activity,inset);group.addView(inset);}firstItem=false;
+                if(rewards)rewardCard(group,item);else agreementCard(group,item);
+            }
+        }
+        if(groups.isEmpty()){
+            LinearLayout empty=PactUi.card(activity,parent);if("全部".equals(statusFilter)&&relationshipFilter.get().isEmpty())PactMood.emptyIllustration(activity,empty,rewards);empty.addView(PactUi.title(activity,rewards?"暂无符合条件的奖励":"暂无符合条件的约定",18));
+            PactUi.gap(activity,empty,8);empty.addView(PactUi.text(activity,rewards?"任务达成后，奖励会出现在这里。可调整状态或关系范围查看其他记录。":"可调整状态或关系范围，或创建新的约定。",14,PactUi.MUTED));
+        }
     }
+    private LinearLayout relationshipGroup(LinearLayout parent,String relationshipId,int count,boolean first){
+        if(!first)PactUi.gap(activity,parent,24);
+        JSONObject relationship=find("relationships",relationshipId);
+        String name=relationship==null?"关系记录":relationship.optString("name");
+        LinearLayout heading=PactUi.row(activity);heading.setGravity(android.view.Gravity.TOP);TextView avatar=PactUi.avatar(activity,name,36);
+        LinearLayout.LayoutParams avatarParams=new LinearLayout.LayoutParams(PactUi.dp(activity,36),PactUi.dp(activity,36));avatarParams.rightMargin=PactUi.dp(activity,12);heading.addView(avatar,avatarParams);
+        LinearLayout identity=PactUi.column(activity);heading.addView(identity,new LinearLayout.LayoutParams(0,-2,1));
+        TextView title=PactUi.title(activity,name,16);title.setMaxLines(2);title.setEllipsize(android.text.TextUtils.TruncateAt.END);title.setContentDescription(name);identity.addView(title);PactUi.gap(activity,identity,4);
+        TextView members=PactUi.text(activity,relationshipSummary(relationship),12,PactUi.MUTED);members.setMaxLines(2);members.setEllipsize(android.text.TextUtils.TruncateAt.END);members.setContentDescription(members.getText());identity.addView(members);
+        TextView amount=PactUi.badge(activity,count+(rewards?" 份":" 条"));amount.setTextColor(PactUi.MUTED);amount.setBackground(PactUi.background(android.graphics.Color.argb(160,255,255,255),PactUi.dp(activity,8)));amount.setContentDescription(count+(rewards?" 份奖励":" 条约定"));LinearLayout.LayoutParams amountParams=new LinearLayout.LayoutParams(-2,-2);amountParams.leftMargin=PactUi.dp(activity,8);heading.addView(amount,amountParams);
+        parent.addView(heading,new LinearLayout.LayoutParams(-1,-2));PactUi.gap(activity,parent,12);
+        LinearLayout entries=PactUi.surface(activity);if(rewards)entries.setBackground(PactUi.softSurface(activity,true,20));entries.setPadding(0,0,0,0);entries.setClipToOutline(true);parent.addView(entries,new LinearLayout.LayoutParams(-1,-2));return entries;
+    }
+    private String relationshipSummary(JSONObject relationship){
+        if(relationship==null)return "历史关系";
+        List<String> names=new ArrayList<>();JSONArray members=relationship.optJSONArray("members");
+        for(int i=0;members!=null&&i<members.length();i++){JSONObject person=members.optJSONObject(i);if(person!=null)names.add(person.optString("name")+(me().equals(person.optString("id"))?"（我）":""));}
+        String type=relationship.optString("type"),label="parent_child".equals(type)?"亲子":"couple".equals(type)?"情侣":"自定义关系";
+        return String.join(" / ",names)+" · "+label+("proxy".equals(relationship.optString("mode"))?" · 家长代记":"")+("ended".equals(relationship.optString("status"))?" · 已解除":"");
+    }
+    private LinearLayout entry(LinearLayout parent,JSONObject item,String stateLabel,boolean rewardPage){
+        LinearLayout content=PactUi.column(activity);content.setPadding(PactUi.dp(activity,16),PactUi.dp(activity,16),PactUi.dp(activity,16),PactUi.dp(activity,16));parent.addView(content,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout heading=PactUi.row(activity);TextView title=PactUi.title(activity,item.optString(rewardPage?"reward":"title"),17);title.setMaxLines(2);title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        if(rewardPage){View gift=PactUi.motif(activity,"gift",18,PactUi.PLUM);LinearLayout.LayoutParams giftParams=new LinearLayout.LayoutParams(PactUi.dp(activity,18),PactUi.dp(activity,18));giftParams.rightMargin=PactUi.dp(activity,10);heading.addView(gift,giftParams);}
+        LinearLayout.LayoutParams titleParams=new LinearLayout.LayoutParams(0,-2,1);titleParams.rightMargin=PactUi.dp(activity,12);heading.addView(title,titleParams);heading.addView(PactUi.chevron(activity));content.addView(heading);
+        if(rewardPage){PactUi.gap(activity,content,8);TextView source=PactUi.text(activity,"来自约定："+item.optString("title"),14,PactUi.MUTED);source.setMaxLines(2);source.setEllipsize(android.text.TextUtils.TruncateAt.END);source.setContentDescription(source.getText());content.addView(source);}
+        PactUi.gap(activity,content,8);LinearLayout statusRow=PactUi.row(activity);statusRow.setGravity(android.view.Gravity.TOP);
+        TextView state=PactUi.badge(activity,stateLabel);state.setContentDescription(stateLabel);statusRow.addView(state);
+        String role=roleSummary(item,rewardPage);TextView roles=PactUi.text(activity,role,12,PactUi.MUTED);roles.setContentDescription(role);
+        LinearLayout.LayoutParams rolesParams=new LinearLayout.LayoutParams(0,-2,1);rolesParams.leftMargin=PactUi.dp(activity,10);rolesParams.topMargin=PactUi.dp(activity,4);statusRow.addView(roles,rolesParams);content.addView(statusRow);
+        PactUi.clickableEntry(activity,content,"查看约定："+item.optString("title"),v->{ScrollView scroll=scrollHost();listScrollY=scroll==null?0:scroll.getScrollY();detailId=item.optString("id");surface.removeAllViews();detail(item);scrollTo(0);});
+        if(android.os.Build.VERSION.SDK_INT>=30)content.setStateDescription(stateLabel);
+        return content;
+    }
+    private void entryNote(LinearLayout parent,String label){
+        PactUi.gap(activity,parent,8);TextView note=PactUi.text(activity,label,12,PactUi.MUTED);note.setContentDescription(label);parent.addView(note);
+    }
+    private String roleSummary(JSONObject item,boolean rewardPage){
+        if(proxy(item))return rewardPage?"我兑现 · 家长代记":member(item,item.optString("executorId"))+"完成 · 家长代记";
+        if(rewardPage)return issuer(item)?"我兑现 · 对方获得":"对方兑现 · 我获得";
+        return issuer(item)?"对方完成 · 我验收":"我完成 · 对方验收";
+    }
+    private String shortDate(String value){String date=localDate(value);return date.isEmpty()?"不限期":date;}
     private void agreementCard(LinearLayout parent,JSONObject item){
-        LinearLayout card=PactUi.card(activity,parent);JSONObject r=relation(item);
-        card.addView(PactUi.text(activity,(r==null?"我们的约定":r.optString("name"))+(proxy(item)?" · 家长代记":""),12,PactUi.MUTED));
-        card.addView(PactUi.badge(activity,PactLabels.task(item.optString("taskState"))));
-        card.addView(PactUi.serif(activity,item.optString("title"),23));
-        TextView condition=PactUi.text(activity,item.optString("conditions"),14,PactUi.MUTED);condition.setMaxLines(2);condition.setEllipsize(android.text.TextUtils.TruncateAt.END);card.addView(condition);
-        if(item.optInt("targetCount")>1)progress(card,item,false);
-        else card.addView(PactUi.text(activity,"目标：一次完成",13,PactUi.MUTED));
-        card.addView(PactUi.text(activity,"答应的奖励 · "+item.optString("reward"),14,PactUi.INK));
-        card.addView(PactUi.text(activity,PactLabels.reward(item.optString("rewardState")),12,PactUi.MUTED));
-        if("achieved".equals(item.optString("taskState"))&&!"received".equals(item.optString("rewardState")))text(card,"兑现期限："+PactLabels.date(item.optString("rewardDueAt"))+overdue(item.optString("rewardDueAt")),12);
-        else if(!"achieved".equals(item.optString("taskState")))text(card,"完成截止："+PactLabels.date(item.optString("dueAt")),12);
-        openButton(card,item);
+        String task=item.optString("taskState"),reward=item.optString("rewardState");
+        LinearLayout card=entry(parent,item,PactLabels.agreement(task,reward),false);
+        if(task.equals("achieved")){if(!PactLabels.settled(reward))entryNote(card,"兑现截止 "+shortDate(item.optString("rewardDueAt"))+overdue(item.optString("rewardDueAt")));}
+        else entryNote(card,(item.optInt("targetCount")>1?item.optInt("progressCount")+" / "+item.optInt("targetCount")+" 次":"一次完成")+" · 截止 "+shortDate(item.optString("dueAt")));
     }
-    private void rewardSummary(LinearLayout parent){
-        int pending=0,offered=0;JSONArray rows=array("agreements");
-        for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item==null||!"achieved".equals(item.optString("taskState"))||(!relationshipFilter.get().isEmpty()&&!relationshipFilter.get().equals(item.optString("relationshipId"))))continue;if("pending".equals(item.optString("rewardState")))pending++;if("offered".equals(item.optString("rewardState")))offered++;}
-        LinearLayout hero=PactUi.hero(activity,parent);hero.addView(PactUi.badge(activity,"每份奖励，都有来处"));
-        hero.addView(PactUi.serif(activity,pending+" 份待兑现 · "+offered+" 份待收讫",22));
-        hero.addView(PactUi.text(activity,"给出是心意，收到后的确认让约定完整。",13,PactUi.MUTED));
+    private TextView rewardSummary(){
+        int pending=0;JSONArray rows=array("agreements");
+        for(int i=0;i<rows.length();i++){JSONObject item=rows.optJSONObject(i);if(item==null||!"achieved".equals(item.optString("taskState"))||(!relationshipFilter.get().isEmpty()&&!relationshipFilter.get().equals(item.optString("relationshipId"))))continue;if("pending".equals(item.optString("rewardState")))pending++;}
+        return PactUi.text(activity,pending+" 份待兑现",12,PactUi.MUTED);
     }
     private void rewardCard(LinearLayout parent,JSONObject item){
-        LinearLayout card="received".equals(item.optString("rewardState"))?PactUi.card(activity,parent):PactUi.hero(activity,parent);
-        card.addView(PactUi.badge(activity,PactLabels.reward(item.optString("rewardState"))));
-        TextView title=PactUi.serif(activity,item.optString("reward"),24);title.setMaxLines(4);title.setEllipsize(android.text.TextUtils.TruncateAt.END);card.addView(title);
-        card.addView(PactUi.text(activity,"来自约定 · "+item.optString("title"),13,PactUi.MUTED));
-        text(card,"任务状态："+PactLabels.task(item.optString("taskState")),13);
-        text(card,member(item,item.optString("issuerId"))+"给予 · "+member(item,item.optString("executorId"))+"收讫",14);
-        if(proxy(item))card.addView(PactUi.badge(activity,"家长代记 · 操作保留来源"));
-        if(!"received".equals(item.optString("rewardState")))text(card,"兑现期限："+PactLabels.date(item.optString("rewardDueAt"))+overdue(item.optString("rewardDueAt")),13);
-        else text(card,proxy(item)?"家长代记已结案":"双方已确认，约定全部完成",14);
-        openButton(card,item);
+        LinearLayout card=entry(parent,item,PactLabels.reward(item.optString("rewardState")),true);
+        if(!PactLabels.settled(item.optString("rewardState")))entryNote(card,"兑现截止 "+shortDate(item.optString("rewardDueAt"))+overdue(item.optString("rewardDueAt")));
     }
-    private void openButton(LinearLayout parent,JSONObject item){
-        Button open=PactUi.button(activity,"查看约定",false,v->{detailId=item.optString("id");surface.removeAllViews();detail(item);});
-        open.setContentDescription("查看约定："+item.optString("title"));parent.addView(open);
-    }
-    private void addFilters(LinearLayout parent) {
-        List<String> filters=rewards?Arrays.asList("全部","我该兑现","等对方兑现","待收讫","已兑现"):Arrays.asList("全部","草稿","待接受","进行中","待验收","已达成","已结束");
-        if(!filters.contains(statusFilter))statusFilter="全部";
-        Spinner status=spinner(parent,"筛选状态",filters,filters.indexOf(statusFilter));
+    private void addFilters(LinearLayout parent,List<String> filters) {
+        LinearLayout toolbar=PactUi.row(activity);Spinner status=spinner(toolbar,"筛选状态",filters,filters.indexOf(statusFilter));
+        toolbar.addView(new View(activity),new LinearLayout.LayoutParams(0,1,1));
+        if(!rewards){Button create=PactUi.compactButton(activity,"创建约定",true,v->create());LinearLayout.LayoutParams createParams=new LinearLayout.LayoutParams(-2,-2);createParams.leftMargin=PactUi.dp(activity,12);toolbar.addView(create,createParams);}
+        else{TextView summary=rewardSummary();LinearLayout.LayoutParams summaryParams=new LinearLayout.LayoutParams(0,-2,2);summaryParams.leftMargin=PactUi.dp(activity,12);summary.setGravity(android.view.Gravity.END);toolbar.addView(summary,summaryParams);}
+        parent.addView(toolbar,new LinearLayout.LayoutParams(-1,-2));
         status.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onNothingSelected(AdapterView<?> p){}public void onItemSelected(AdapterView<?> p,View v,int n,long id){String next=filters.get(n);if(!next.equals(statusFilter)){statusFilter=next;surface.removeAllViews();render(surface,rewards);}}});
     }
     private boolean matches(JSONObject item) {
         String selectedRelationship=relationshipFilter.get();
         if(!selectedRelationship.isEmpty()&&!selectedRelationship.equals(item.optString("relationshipId")))return false;
         String task=item.optString("taskState"),reward=item.optString("rewardState");
-        if(rewards){if(!task.equals("achieved"))return false;switch(statusFilter){case "我该兑现":return issuer(item)&&reward.equals("pending");case "等对方兑现":return executor(item)&&reward.equals("pending");case "待收讫":return reward.equals("offered");case "已兑现":return reward.equals("received");default:return true;}}
+        if(rewards){if(!task.equals("achieved"))return false;return statusFilter.equals("全部")||statusFilter.equals(PactLabels.reward(reward));}
         if(statusFilter.equals("全部"))return true;
         if(statusFilter.equals("已结束"))return task.equals("declined")||task.equals("cancelled")||task.equals("expired");
-        return statusFilter.equals(PactLabels.task(task));
+        return statusFilter.equals(PactLabels.agreement(task,reward));
     }
     private Spinner spinner(LinearLayout parent,String label,List<String> values,int selected) {
-        text(parent,label,13);Spinner spinner=new Spinner(activity);spinner.setContentDescription(label);spinner.setMinimumHeight(PactUi.dp(activity,48));
-        ArrayAdapter<String> adapter=new ArrayAdapter<>(activity,android.R.layout.simple_spinner_item,values);adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);spinner.setAdapter(adapter);spinner.setSelection(selected);parent.addView(spinner,new LinearLayout.LayoutParams(-1,-2));return spinner;
+        Spinner spinner=new Spinner(activity);spinner.setContentDescription(label);spinner.setMinimumHeight(PactUi.dp(activity,48));
+        ArrayAdapter<String> adapter=new ArrayAdapter<>(activity,android.R.layout.simple_spinner_item,values);adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);spinner.setAdapter(adapter);spinner.setSelection(selected);PactUi.styleSpinner(activity,spinner);
+        TextView measure=PactUi.text(activity,values.get(selected),14,PactUi.INK);int width=Math.round(measure.getPaint().measureText(values.get(selected)))+PactUi.dp(activity,40);
+        parent.addView(spinner,new LinearLayout.LayoutParams(width,-2));return spinner;
     }
     void create() {
         List<JSONObject> available=new ArrayList<>();JSONArray rows=array("relationships");
         for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null&&"active".equals(row.optString("status")))available.add(row);}
-        if(available.isEmpty()){new AlertDialog.Builder(activity).setTitle("先和重要的人，建立连接").setMessage("在我们页邀请对方，或建立家长代记档案，再一起约定一件小事。").setPositiveButton("知道了",null).show();return;}
+        if(available.isEmpty()){new AlertDialog.Builder(activity).setTitle("请先建立关系").setMessage("在我们页邀请对方，或建立家长代记档案后，再创建约定。").setPositiveButton("知道了",null).show();return;}
         new AgreementCreation(activity,available,me(),relationshipFilter.get(),(form,body)->write(form,"/v1/agreements",body,true));
     }
     private void edit(JSONObject item,boolean amendment) {
-        PactForm form=new PactForm(activity,amendment?"一起商量修改":"编辑约定");
+        PactForm form=new PactForm(activity,amendment?"修改提案":"编辑约定");
         boolean earned="achieved".equals(item.optString("taskState"));
         EditText title=earned?null:PactUi.input(activity,form.fields,"约定标题",value(item,"title"),false);
         EditText conditions=earned?null:PactUi.input(activity,form.fields,"达成条件",value(item,"conditions"),true);
@@ -155,82 +209,83 @@ final class AgreementScreens {
     private static JSONObject action(JSONObject item,String action)throws Exception{return new JSONObject().put("action",action).put("expectedVersion",item.getInt("version"));}
 
     private void detail(JSONObject item) {
-        surface.addView(PactUi.iconButton(activity,"返回列表","back",v->{detailId="";surface.removeAllViews();render(surface,rewards);}));
         String task=item.optString("taskState"),reward=item.optString("rewardState");
-        LinearLayout hero=PactUi.hero(activity,surface);
-        hero.addView(PactUi.badge(activity,PactLabels.task(task)+" · "+PactLabels.reward(reward)));
-        hero.addView(PactUi.serif(activity,item.optString("title"),29));
-        hero.addView(PactUi.text(activity,member(item,item.optString("executorId"))+"来完成，"+member(item,item.optString("issuerId"))+"来确认",14,PactUi.MUTED));
-        if(proxy(item))hero.addView(PactUi.badge(activity,"家长代记 · 所有代记操作都会保留来源"));
-        if(!activeRelation(item))text(hero,"关系已解除，历史保留；已经产生的奖励仍可结清。",13);
-        hero.addView(PactUi.text(activity,nextStepHint(item),14,PactUi.MUTED));
-        String primary=primaryAction(hero,item);
-        if(task.equals("achieved")&&reward.equals("received"))hero.addView(PactUi.serif(activity,proxy(item)?"家长代记已结案":"双方已确认，约定全部完成",22));
+        JSONObject relationship=relation(item);LinearLayout heading=PactUi.row(activity);
+        heading.addView(PactUi.iconButton(activity,"返回列表","back",v->{detailId="";surface.removeAllViews();render(surface,rewards);scrollTo(listScrollY);}));
+        TextView relationshipName=PactUi.text(activity,relationship==null?"关系记录":relationship.optString("name"),14,PactUi.MUTED);LinearLayout.LayoutParams relationParams=new LinearLayout.LayoutParams(0,-2,1);relationParams.leftMargin=PactUi.dp(activity,8);heading.addView(relationshipName,relationParams);surface.addView(heading);
+        PactUi.gap(activity,surface,12);surface.addView(PactUi.title(activity,item.optString("title"),23));PactUi.gap(activity,surface,8);
+        surface.addView(PactUi.badge(activity,PactLabels.agreement(task,reward)));
+        PactUi.gap(activity,surface,12);surface.addView(PactUi.text(activity,"完成："+member(item,item.optString("executorId"))+" · 验收："+member(item,item.optString("issuerId")),14,PactUi.MUTED));
+        if(proxy(item)){PactUi.gap(activity,surface,8);surface.addView(PactUi.text(activity,"家长代记 · 所有代记操作都会保留来源",12,PactUi.MUTED));}
+        if(!activeRelation(item))text(surface,"关系已解除，历史保留；已经产生的奖励仍可结清。",13);
+        PactUi.gap(activity,surface,12);
+        if(task.equals("achieved")&&PactLabels.settled(reward))surface.addView(PactUi.text(activity,proxy(item)?"家长代记已结案":"兑现方已确认，约定已完成",13,PactUi.MUTED));
+        else surface.addView(PactUi.text(activity,nextStepHint(item),13,PactUi.MUTED));
+        LinearLayout command=PactUi.column(activity);String primary=primaryAction(command,item);
+        if(command.getChildCount()>0){PactUi.gap(activity,surface,16);surface.addView(command);}
 
-        LinearLayout journey=PactUi.card(activity,surface);
-        PactUi.sectionTitle(activity,journey,"把每一小步，积攒起来","目标与进度");
+        PactUi.sectionTitle(activity,surface,"进度","");
+        LinearLayout journey=PactUi.card(activity,surface);journey.setBackground(PactUi.softSurface(activity,false,20));
         progress(journey,item,true);
         text(journey,"完成截止："+PactLabels.date(item.optString("dueAt")),13);
         if(task.equals("active")&&item.optInt("targetCount")>1&&item.optInt("progressCount")>=item.optInt("targetCount"))
             text(journey,"次数已经达到目标。提交后，由验收方确认是否达成。",13);
 
-        PactUi.sectionTitle(activity,surface,"我们说好的","彼此都能看见的完整条款");
-        LinearLayout terms=PactUi.card(activity,surface);
-        text(terms,"达成条件",12);text(terms,item.optString("conditions"),17);
-        text(terms,"完成截止："+PactLabels.date(item.optString("dueAt")),14);
-        text(terms,member(item,item.optString("executorId"))+"负责完成",14);
-        text(terms,member(item,item.optString("issuerId"))+"负责验收与兑现",14);
+        JSONObject submission=item.optJSONObject("submission");
+        if(submission!=null){
+            PactUi.sectionTitle(activity,surface,"提交证据","");
+            LinearLayout card=PactUi.card(activity,surface);text(card,"本次提交",17);
+            if(submission.optBoolean("proxy")){PactUi.gap(activity,card,8);card.addView(PactUi.badge(activity,"家长代记"));}
+            text(card,submission.optString("note"),15);images(card,submission.optJSONArray("mediaIds"));
+        }
 
-        LinearLayout promise=PactUi.hero(activity,surface);
-        promise.addView(PactUi.badge(activity,"约定奖励 · "+PactLabels.reward(reward)));
-        promise.addView(PactUi.serif(activity,item.optString("reward"),23));
+        PactUi.sectionTitle(activity,surface,"约定条款","");
+        LinearLayout terms=PactUi.card(activity,surface);
+        PactUi.meta(activity,terms,"达成条件",item.optString("conditions"));
+        PactUi.meta(activity,terms,"完成截止",PactLabels.date(item.optString("dueAt")));
+        PactUi.meta(activity,terms,"完成者",member(item,item.optString("executorId")));
+        PactUi.meta(activity,terms,"验收与兑现",member(item,item.optString("issuerId")));
+
+        PactUi.sectionTitle(activity,surface,"奖励","");
+        LinearLayout promise=PactUi.card(activity,surface);promise.setBackground(PactUi.softSurface(activity,true,20));
+        LinearLayout rewardHeading=PactUi.row(activity);rewardHeading.addView(PactUi.badge(activity,"约定奖励 · "+PactLabels.reward(reward)));rewardHeading.addView(new View(activity),new LinearLayout.LayoutParams(0,1,1));rewardHeading.addView(PactUi.motif(activity,"gift",22,PactUi.PLUM));promise.addView(rewardHeading);
+        PactUi.gap(activity,promise,12);promise.addView(PactUi.title(activity,item.optString("reward"),17));
         text(promise,"由"+member(item,item.optString("issuerId"))+"给予",14);
         text(promise,"达成后 "+item.optInt("redeemWithinDays")+" 天内兑现",14);
-        if(!item.isNull("rewardDueAt"))text(promise,"兑现期限："+PactLabels.date(item.optString("rewardDueAt"))+overdue(item.optString("rewardDueAt")),14);
-        text(promise,proxy(item)?"收讫由家长代记，并保留实际操作来源。":"给出之后，由"+member(item,item.optString("executorId"))+"确认收到。",13);
+        if(!item.isNull("rewardDueAt"))text(promise,"兑现期限："+PactLabels.date(item.optString("rewardDueAt"))+(PactLabels.settled(reward)?"":overdue(item.optString("rewardDueAt"))),14);
 
         JSONObject pending=item.optJSONObject("proposal");
         if(pending!=null){
             LinearLayout proposal=PactUi.card(activity,surface);
-            proposal.addView(PactUi.badge(activity,"等待协商确认"));
-            text(proposal,pending.optString("kind").equals("cancel")?"提出结束这条约定":"提出条款修改，确认前原条款继续有效",17);
+            boolean settled=PactLabels.settled(reward);
+            proposal.addView(PactUi.badge(activity,settled?"历史提案":"等待协商确认"));
+            text(proposal,settled?"约定已兑现，此提案不再生效。":pending.optString("kind").equals("cancel")?"提出结束这条约定":"提出条款修改，确认前原条款继续有效",17);
             text(proposal,member(item,pending.optString("by"))+"提出 · "+pending.optString("note"),14);
             JSONObject changes=pending.optJSONObject("changes");
             if(changes!=null)for(Iterator<String> it=changes.keys();it.hasNext();){String key=it.next();text(proposal,fieldName(key)+"："+displayValue(changes,key),15);}
-            boolean settlement=task.equals("achieved")&&!reward.equals("received")&&pending.optString("kind").equals("amend")&&onlyRewardChanges(changes);
-            if((activeRelation(item)||settlement)&&(!me().equals(pending.optString("by"))||proxy(item))){
+            boolean settlement=task.equals("achieved")&&!PactLabels.settled(reward)&&pending.optString("kind").equals("amend")&&onlyRewardChanges(changes);
+            if(!PactLabels.settled(reward)&&(activeRelation(item)||settlement)&&(!me().equals(pending.optString("by"))||proxy(item))){
                 button(proposal,"同意提案",primary.isEmpty(),()->noteAction(item,"resolve_proposal","同意提案",true,false));
                 button(proposal,"不同意提案",false,()->noteAction(item,"resolve_proposal","不同意提案",false,false));
-            }else text(proposal,"等待另一方回应",14);
+            }else if(!settled)text(proposal,"等待另一方回应",14);
         }
         moreActions(item,primary,pending);
 
-        JSONObject submission=item.optJSONObject("submission");
-        if(submission!=null){
-            PactUi.sectionTitle(activity,surface,"这次完成的证据","本次提交");
-            LinearLayout card=PactUi.card(activity,surface);text(card,"本次提交",17);
-            if(submission.optBoolean("proxy"))card.addView(PactUi.badge(activity,"家长代记"));
-            text(card,submission.optString("note"),15);images(card,submission.optJSONArray("mediaIds"));
-        }
-        JSONArray steps=item.optJSONArray("progress");
-        if(steps!=null&&steps.length()>0){
-            PactUi.sectionTitle(activity,surface,"一起留下的片刻","每一步进展");
-            for(int i=steps.length()-1;i>=0;i--){JSONObject entry=steps.optJSONObject(i);if(entry==null)continue;
-                LinearLayout card=PactUi.card(activity,surface);
-                card.addView(PactUi.badge(activity,"+"+entry.optInt("amount")+" 次"));
-                text(card,(entry.optBoolean("proxy")?"家长代记 · ":"")+member(item,entry.optString("actorId"))+" · "+PactLabels.date(entry.optString("at")),12);
-                text(card,entry.optString("note"),15);images(card,entry.optJSONArray("mediaIds"));
-            }
-        }
-        PactUi.sectionTitle(activity,surface,"约定时间线","每一次回应，都认真留下");
+        PactUi.sectionTitle(activity,surface,"进度记录","");
+        LinearLayout eventHistory=PactUi.card(activity,surface);
         JSONArray events=item.optJSONArray("events");
+        boolean firstEvent=true;
         for(int i=events==null?-1:events.length()-1;i>=0;i--){JSONObject event=events.optJSONObject(i);if(event==null)continue;
-            LinearLayout row=PactUi.card(activity,surface);
+            LinearLayout row=PactUi.column(activity);PactUi.timelineRail(activity,row,firstEvent,i==0);firstEvent=false;eventHistory.addView(row,new LinearLayout.LayoutParams(-1,-2));
             text(row,(event.optBoolean("proxy")?"家长代记 · ":"")+member(item,event.optString("actorId"))+" · "+PactLabels.action(event.optString("action")),15);
-            row.addView(PactUi.text(activity,PactLabels.date(event.optString("at")),12,PactUi.MUTED));
+            PactUi.gap(activity,row,4);row.addView(PactUi.text(activity,PactLabels.date(event.optString("at")),12,PactUi.MUTED));
             if(!event.optString("note").isEmpty())text(row,event.optString("note"),14);
             JSONObject details=event.optJSONObject("details");
             if(details!=null){JSONObject before=details.optJSONObject("before"),after=details.optJSONObject("after");
+                JSONObject step=details.optJSONObject("progress");
+                if(step!=null){text(row,"+"+step.optInt("amount")+" 次",14);images(row,step.optJSONArray("mediaIds"));}
+                JSONObject submitted=details.optJSONObject("submission");
+                if(submitted!=null)images(row,submitted.optJSONArray("mediaIds"));
                 if(before!=null&&after!=null)for(Iterator<String> it=after.keys();it.hasNext();){String key=it.next();if(!String.valueOf(before.opt(key)).equals(String.valueOf(after.opt(key))))text(row,fieldName(key)+"："+displayValue(before,key)+" → "+displayValue(after,key),13);}
                 if(details.has("approved"))text(row,details.optBoolean("approved")?"结果：同意 / 通过":"结果：需要补充 / 未同意",13);
             }
@@ -238,11 +293,14 @@ final class AgreementScreens {
     }
     private void progress(LinearLayout parent,JSONObject item,boolean prominent){
         int target=item.optInt("targetCount"),completed=item.optInt("progressCount");
-        if(target<=1){text(parent,"目标：一次完成",prominent?21:14);return;}
-        TextView value=prominent?PactUi.serif(activity,"进度："+completed+" / "+target+" 次",26):PactUi.text(activity,"进度："+completed+" / "+target+" 次",14,PactUi.INK);parent.addView(value);
+        if(target<=1){text(parent,"目标：一次完成",prominent?18:14);return;}
+        TextView value=prominent?PactUi.title(activity,"进度："+completed+" / "+target+" 次",21):PactUi.text(activity,"进度："+completed+" / "+target+" 次",14,PactUi.INK);parent.addView(value);
         ProgressBar bar=new ProgressBar(activity,null,android.R.attr.progressBarStyleHorizontal);bar.setMax(target);bar.setProgress(completed);
-        bar.setProgressTintList(android.content.res.ColorStateList.valueOf(PactUi.GREEN));bar.setContentDescription("已记录 "+completed+" 次，目标 "+target+" 次");
-        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,PactUi.dp(activity,8));params.topMargin=PactUi.dp(activity,8);params.bottomMargin=PactUi.dp(activity,10);parent.addView(bar,params);
+        android.graphics.drawable.GradientDrawable track=PactUi.background(android.graphics.Color.rgb(237,218,225),PactUi.dp(activity,4));
+        android.graphics.drawable.GradientDrawable fill=new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,new int[]{android.graphics.Color.rgb(203,127,150),PactUi.ROSE});fill.setCornerRadius(PactUi.dp(activity,4));
+        android.graphics.drawable.ClipDrawable progress=new android.graphics.drawable.ClipDrawable(fill,android.view.Gravity.START,android.graphics.drawable.ClipDrawable.HORIZONTAL);
+        android.graphics.drawable.LayerDrawable layers=new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{track,progress});layers.setId(0,android.R.id.background);layers.setId(1,android.R.id.progress);bar.setProgressDrawable(layers);bar.setProgress(completed);bar.setContentDescription("已记录 "+completed+" 次，目标 "+target+" 次");
+        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,PactUi.dp(activity,8));params.topMargin=PactUi.dp(activity,12);parent.addView(bar,params);
     }
     private String primaryAction(LinearLayout parent,JSONObject item){
         String task=item.optString("taskState"),reward=item.optString("rewardState");
@@ -256,59 +314,60 @@ final class AgreementScreens {
             if(issuer(item)&&task.equals("submitted")){button(parent,"验收通过",true,()->noteAction(item,"review","验收通过",true,false));return "验收通过";}
         }
         if(task.equals("achieved")){
-            if(issuer(item)&&reward.equals("pending")){button(parent,"奖励已给出",true,()->noteAction(item,"give","奖励已给出",null,false));return "奖励已给出";}
-            if(executor(item)&&reward.equals("offered")){button(parent,"确认已收到",true,()->noteAction(item,"receive","确认已收到",null,false));return "确认已收到";}
+            if(issuer(item)&&reward.equals("pending")){button(parent,"标记已兑现",true,()->noteAction(item,"give","标记已兑现",null,false));return "标记已兑现";}
         }
         return "";
     }
     private String nextStepHint(JSONObject item){
         String task=item.optString("taskState"),reward=item.optString("rewardState");
         if(task.equals("achieved")){
-            if(reward.equals("received"))return proxy(item)?"每一步代记都有来源，这份约定已经完整结案。":"说好的事，已经认真兑现。谢谢彼此的确认。";
-            if(reward.equals("offered"))return executor(item)?"奖励已记录给出。请核对实际收到的内容，再确认收讫。":"已记录给出，正在等对方确认收到。";
-            return issuer(item)?"约定已经达成。实际给出奖励后，再在这里留下记录。":"约定已经达成，正在等待答应的奖励。";
+            if(PactLabels.settled(reward))return "奖励已兑现。";
+            return issuer(item)?"任务已达成。请在实际给出奖励后记录。":"任务已达成，等待对方兑现奖励。";
         }
-        if(!activeRelation(item))return "共同记录继续保留，这段关系不再新增日常互动。";
+        if(!activeRelation(item))return "关系已解除，保留历史记录。";
         switch(task){
-            case "draft":return "这一份仍是草稿。发出以后，等对方接受再开始。";
-            case "proposed":return executor(item)?"先看清双方说好的条款。接受以后，这份约定才开始。":"期待已经说出口，正在等待对方接受。";
-            case "active":return executor(item)?"记录每一小步。提交完成后，还需要对方验收确认。":"对方正在认真完成，一起期待下一次进展。";
+            case "draft":return "草稿仅自己可见。发布后，等待对方接受。";
+            case "proposed":return executor(item)?"请核对条款。接受后约定生效。":"等待对方接受。";
+            case "active":return executor(item)?"完成后请提交，由对方验收确认。":"等待对方提交完成。";
             case "submitted":return issuer(item)?"完成说明和照片已经提交，请核对证据后验收。":"已经提交，正在等对方验收。奖励尚未进入待兑现。";
             case "expired":return "已超过完成截止。双方可以商量延期，原约定和记录会保留。";
-            case "declined":return "这次没有达成一致，彼此仍然可以开始新的约定。";
-            default:return "这份约定已经结束，发生过的每一步继续保留。";
+            case "declined":return "约定已被拒绝。";
+            default:return "约定已结束，保留历史记录。";
         }
     }
     private void moreActions(JSONObject item,String primary,JSONObject pending){
         String task=item.optString("taskState"),reward=item.optString("rewardState");
-        LinearLayout actions=PactUi.column(activity);
+        LinearLayout actions=PactUi.surface(activity);actions.setPadding(0,0,0,0);actions.setClipToOutline(true);
         if(activeRelation(item)){
-            if(issuer(item)&&(task.equals("draft")||task.equals("proposed")))button(actions,"编辑约定",false,()->edit(item,false));
-            if(executor(item)&&task.equals("proposed"))button(actions,"拒绝约定",false,()->noteAction(item,"decline","拒绝约定",null,false));
-            if(issuer(item)&&(task.equals("draft")||task.equals("proposed")))button(actions,"撤回约定",false,()->noteAction(item,"withdraw","撤回约定",null,false));
+            if(issuer(item)&&(task.equals("draft")||task.equals("proposed")))secondaryAction(actions,"编辑约定",()->edit(item,false));
+            if(executor(item)&&task.equals("proposed"))secondaryAction(actions,"拒绝约定",()->noteAction(item,"decline","拒绝约定",null,false));
+            if(issuer(item)&&(task.equals("draft")||task.equals("proposed")))secondaryAction(actions,"撤回约定",()->noteAction(item,"withdraw","撤回约定",null,false));
             if(executor(item)&&task.equals("active")){
-                if(!primary.equals("记录进度"))button(actions,"记录进度",false,()->evidence(item,true));
-                if(!primary.equals("提交完成"))button(actions,"提交完成",false,()->evidence(item,false));
+                if(!primary.equals("记录进度"))secondaryAction(actions,"记录进度",()->evidence(item,true));
+                if(!primary.equals("提交完成"))secondaryAction(actions,"提交完成",()->evidence(item,false));
             }
-            if(issuer(item)&&task.equals("submitted"))button(actions,"退回补充",false,()->noteAction(item,"review","退回补充",false,true));
-            if(!task.equals("draft"))button(actions,"留下说明",false,()->noteAction(item,"comment","留下说明",null,true));
+            if(issuer(item)&&task.equals("submitted"))secondaryAction(actions,"退回补充",()->noteAction(item,"review","退回补充",false,true));
         }
-        if(task.equals("achieved")&&executor(item)&&reward.equals("offered"))button(actions,"尚未收到",false,()->noteAction(item,"dispute","尚未收到",null,true));
-        boolean negotiable=task.equals("active")||task.equals("submitted")||task.equals("expired")||(task.equals("achieved")&&!reward.equals("received"));
+        boolean negotiable=task.equals("active")||task.equals("submitted")||task.equals("expired")||(task.equals("achieved")&&!PactLabels.settled(reward));
         if(pending==null&&negotiable&&(activeRelation(item)||task.equals("achieved"))){
-            button(actions,"提出修改",false,()->edit(item,true));
-            if(!task.equals("achieved"))button(actions,"协商取消",false,()->noteAction(item,"propose_cancel","协商取消",null,true));
+            secondaryAction(actions,"提出修改",()->edit(item,true));
+            if(!task.equals("achieved"))secondaryAction(actions,"协商取消",()->noteAction(item,"propose_cancel","协商取消",null,true));
         }
-        if(actions.getChildCount()>0){PactUi.sectionTitle(activity,surface,"更多操作","想补充说明，或一起商量改变");surface.addView(actions);}
+        if(actions.getChildCount()>0){PactUi.sectionTitle(activity,surface,"更多操作","");surface.addView(actions,new LinearLayout.LayoutParams(-1,-2));}
+    }
+    private void secondaryAction(LinearLayout parent,String label,Runnable action){
+        if(parent.getChildCount()>0)PactUi.divider(activity,parent);
+        LinearLayout row=PactUi.row(activity);row.setMinimumHeight(PactUi.dp(activity,48));row.setPadding(PactUi.dp(activity,16),PactUi.dp(activity,12),PactUi.dp(activity,16),PactUi.dp(activity,12));
+        row.addView(PactUi.text(activity,label,15,PactUi.INK),new LinearLayout.LayoutParams(0,-2,1));row.addView(PactUi.chevron(activity));
+        PactUi.clickableEntry(activity,row,label,v->action.run());parent.addView(row,new LinearLayout.LayoutParams(-1,-2));
     }
     private static String fieldName(String key){switch(key){case"title":return"约定标题";case"conditions":return"达成条件";case"reward":return"奖励内容";case"dueAt":return"完成截止";case"targetCount":return"目标次数";case"redeemWithinDays":return"兑现天数";case"rewardDueAt":return"兑现期限";default:return"条款";}}
     private static String displayValue(JSONObject object,String key){if(object.isNull(key))return"不限期";return key.endsWith("At")?PactLabels.date(object.optString(key)):String.valueOf(object.opt(key));}
     private void noteAction(JSONObject item,String action,String title,Boolean approved,boolean required){
         PactForm form=new PactForm(activity,title);
-        if(proxy(item)&&(action.equals("accept")||action.equals("receive")||action.equals("resolve_proposal")))text(form.fields,"此操作将记录为家长代记，不显示为孩子独立确认。",14);
+        if(proxy(item)&&(action.equals("accept")||action.equals("resolve_proposal")))text(form.fields,"此操作将记录为家长代记，不显示为孩子独立确认。",14);
         if(action.equals("review")&&Boolean.TRUE.equals(approved))text(form.fields,"通过后任务已达成，你需要按约定兑现奖励。",15);
-        if(action.equals("give"))text(form.fields,"请在实际给出奖励后记录。对方确认收到后才会结清。",15);
-        if(action.equals("receive"))text(form.fields,"请确认整份奖励已经收到。",15);
+        if(action.equals("give"))text(form.fields,"请确认约定奖励已经兑现。确认后，这条约定结束。",15);
         EditText note=PactUi.input(activity,form.fields,"说明","",true);note.setHint(required?"请说明原因":"可选，留下一句话");
         form.show("确认操作",v->{if(required&&note.getText().toString().trim().isEmpty()){form.fail("请填写说明。");return;}try{JSONObject body=action(item,action);body.put("note",note.getText().toString());if(approved!=null)body.put("approved",approved);write(form,path(item),body,false);}catch(Exception e){form.fail("请检查输入后重试。");}});
     }
@@ -331,7 +390,7 @@ final class AgreementScreens {
     private void checkConflict(PactForm form,String path){
         api.async(()->api.call("/v1/state",null),new ApiClient.Callback<JSONObject>(){
             public void success(JSONObject latest){if(activity.isDestroyed()||!form.dialog.isShowing())return;JSONArray rows=latest.optJSONArray("agreements");JSONObject found=null;for(int i=0;rows!=null&&i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(path.equals(path(row))){found=row;break;}}if(found==null){form.fail("此约定当前不可访问，请返回刷新。");return;}JSONObject item=found;
-                String summary=PactLabels.task(item.optString("taskState"))+" · "+PactLabels.reward(item.optString("rewardState"))+"\n\n"+item.optString("conditions")+"\n\n奖励："+item.optString("reward")+"\n完成截止："+PactLabels.date(item.optString("dueAt"))+"\n\n当前输入会保留。请核对最新条款，再决定是否重试。";
+                String summary=PactLabels.agreement(item.optString("taskState"),item.optString("rewardState"))+"\n\n"+item.optString("conditions")+"\n\n奖励："+item.optString("reward")+"\n完成截止："+PactLabels.date(item.optString("dueAt"))+"\n\n当前输入会保留。请核对最新条款，再决定是否重试。";
                 new AlertDialog.Builder(activity).setTitle("最新约定").setMessage(summary).setNegativeButton("返回核对",null).setPositiveButton("按新版继续编辑",(d,w)->{form.expectedVersionOverride=item.optInt("version");form.fail("已读取最新版本，请核对输入后再次确认操作。");}).show();}
             public void failure(ApiClient.ApiError error){if(!activity.isDestroyed())form.fail(error.getMessage());}
         });

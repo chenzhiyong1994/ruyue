@@ -1,4 +1,4 @@
-Ruyue / 如约
+Ruyue / 濡傜害
 
 The Gradle Wrapper files in android/gradle/wrapper/ and android/gradlew*
 are distributed by the Gradle project under Apache License 2.0.
@@ -6,5 +6,9 @@ Source: https://github.com/gradle/gradle/tree/v8.14.5
 License: https://www.apache.org/licenses/LICENSE-2.0
 Wrapper SHA-256: 7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172
 
-Android interface artwork is drawn by this project. The images under
-site/assets/ are native screenshots using synthetic demonstration data.
+Android UI icons and vector artwork are drawn by this project. The two PNG
+illustrations in android/app/src/main/res/drawable-nodpi/ are AI-generated;
+prompts and processing notes are in docs/design/ruyue-illustrations.md.
+They are included under the project MIT license to the extent applicable
+rights can be licensed. Images under site/assets/ are native screenshots
+using synthetic demonstration data, not real family records.

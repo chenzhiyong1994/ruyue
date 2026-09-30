@@ -13,7 +13,7 @@ public final class PactLabels {
         switch (value) {
             case "draft": return "草稿";
             case "proposed": return "待接受";
-            case "active": return "进行中";
+            case "active": return "待完成";
             case "submitted": return "待验收";
             case "achieved": return "已达成";
             case "declined": return "已拒绝";
@@ -26,11 +26,19 @@ public final class PactLabels {
     public static String reward(String value) {
         switch (value) {
             case "unearned": return "达成后获得";
-            case "pending": return "奖励待兑现";
-            case "offered": return "已给出，待收讫";
-            case "received": return "奖励已兑现";
+            case "pending": return "待兑现";
+            case "offered":
+            case "received": return "已兑现";
             default: return value;
         }
+    }
+
+    public static String agreement(String taskState, String rewardState) {
+        return "achieved".equals(taskState) ? reward(rewardState) : task(taskState);
+    }
+
+    public static boolean settled(String rewardState) {
+        return "received".equals(rewardState) || "offered".equals(rewardState);
     }
 
     public static String action(String value) {
@@ -44,10 +52,10 @@ public final class PactLabels {
             case "progress": return "记录进度";
             case "submit": return "提交完成";
             case "review": return "验收结果";
-            case "give": return "记录奖励已给出";
+            case "give": return "标记已兑现";
             case "receive": return "确认奖励已收到";
             case "dispute": return "反馈尚未收到";
-            case "comment": return "留下说明";
+            case "comment": return "补充说明";
             case "propose_amend": return "提出修改";
             case "propose_cancel": return "提出取消";
             case "resolve_proposal": return "回应协商";

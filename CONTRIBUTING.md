@@ -1,27 +1,25 @@
 # Contributing to Ruyue
 
-Thank you for helping improve Ruyue. Issues and pull requests may be written in English or Simplified Chinese. The app currently has a Chinese interface; the product and API specifications are in Chinese.
+Ruyue is an unfinished experimental prototype. Development is paused as of September 30, 2026. Independent forks are welcome, but there is no commitment to review contributions, answer issues, ship releases, or resume development.
 
-## Before changing a workflow
+If you choose to open an issue or pull request, English and Simplified Chinese are both welcome. The app interface and shared product specifications are currently Chinese. Please keep submissions focused and usable without private context; a submission may remain unreviewed.
 
-Read the [product scope](docs/prd.md), [API contract](docs/api.md), and [acceptance criteria](docs/acceptance.md). Keep a change focused on a concrete problem. For a new product capability or a breaking contract change, describe the proposal in an issue before implementing it.
+## Product and data boundaries
 
-Preserve these rules:
+Read the [product scope](docs/prd.md), [API contract](docs/api.md), and [acceptance criteria](docs/acceptance.md) before changing a workflow. Preserve these rules unless your fork explicitly changes and documents the contract:
 
-- Accepting an agreement, approving completion, giving a reward, and confirming receipt are distinct actions.
-- Relationship members cannot act as the other account. Parent proxy actions must remain explicitly attributed.
-- Changes to active terms need mutual agreement. Ending a relationship cannot erase an earned reward.
-- The service is authoritative for permissions, state, time, and versions. A failed request must not appear successful in the UI.
-- Keep stable contract and acceptance IDs. Update both client and server documentation when changing a shared contract.
-- Keep relationship scope in the existing “我们” page entry; do not add a permanent global relationship bar above every page.
+- The main flow is acceptance, completion, review, reward pending, and fulfilled. The reward giver's fulfillment action ends the flow; there is no second receipt confirmation.
+- A single progress history includes creation, acceptance, notes, photos, and later actions. Do not restore a separate “leave a note” entry as an incidental UI change.
+- Members cannot act as the other shared account. Parent proxy actions must identify the actual actor and their proxy source.
+- Active-term changes need mutual agreement. Ending a relationship cannot erase an earned reward.
+- The service controls permissions, state, time, and versions. A failed request must not appear successful in the UI.
+- Update both sides and the shared contract for API changes; retain stable acceptance IDs. Keep relationship selection in its existing “我们” entry instead of adding a permanent bar to every page.
 
-Stranger marketplaces, payments, automatic punishment, background push services, and AI adjudication are outside the current preview scope.
+Payments, stranger marketplaces, automatic punishment, background push services, and AI adjudication are outside this snapshot's scope. Forks exploring new capabilities should describe their own behavior and maintenance status rather than imply upstream support.
 
-## Development and checks
+## Checks
 
-Follow [development setup](docs/development.md) and [testing](docs/testing.md). Use the checked-in Gradle Wrapper and the supported toolchain. Do not commit generated builds, SDK paths, databases, credentials, signing files, or device fixtures.
-
-Run the checks relevant to your change:
+Follow [Development](docs/development.md) and [Testing](docs/testing.md). Use the checked-in Gradle Wrapper and the documented toolchain. Run checks appropriate to the changed behavior:
 
 ```sh
 python scripts/validate_project.py
@@ -29,14 +27,12 @@ python -m unittest discover -s tests -p 'test_*.py' -v
 git diff --check
 ```
 
-For Android changes, run Debug unit tests, build, and lint using the commands in the development guide. Verify affected native interactions and inspect screenshots where layout changed. A small documentation edit does not need a device run. Do not remove assertions or relax thresholds to hide a failure.
+Android changes need Debug unit tests, a build, lint, and affected native interactions. Inspect screenshots when changing layout. A documentation-only change does not require a device run. Preserve useful assertions; do not weaken checks merely to turn a failure green.
 
-Use synthetic accounts and dedicated test data. Never clear, uninstall, or reset someone else's app data or emulator to make a test pass. Reports under `artifacts/` can contain test credentials and are intentionally ignored; share only reviewed, redacted excerpts.
+Use dedicated test devices and synthetic data. Do not clear, uninstall, or reset an existing app or emulator to make a test pass. Never commit databases, real family records, child photos, credentials, session tokens, signing material, local SDK paths, or raw test fixtures. Generated outputs and credential-bearing reports must remain ignored.
 
-## Pull requests
+## Submissions and licensing
 
-Explain the problem, the resulting behavior, and the checks you actually ran. Include sanitized screenshots for visual changes and state any unverified behavior. Keep unrelated cleanup and generated artifacts out of the change. Public issues and pull requests must not contain real family records, child photos, passwords, session tokens, or private database contents.
+Describe the concrete problem, resulting behavior, and checks actually run. Include sanitized screenshots for visual changes and list any unverified paths. Do not include unrelated cleanup or generated builds. Report vulnerabilities using [SECURITY.md](SECURITY.md), without putting sensitive details in public issues.
 
-Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue containing exploit details.
-
-Contributions are provided under the project's [MIT License](LICENSE). Keep third-party notices and licenses intact; the Gradle Wrapper has its own license listed in [NOTICE](NOTICE).
+Contributions are provided under the project's [MIT License](LICENSE). Preserve third-party notices and licenses in [NOTICE](NOTICE). Document the source and permission status of added assets; AI-generated artwork should include its provenance, following the existing [illustration record](docs/design/ruyue-illustrations.md).

@@ -70,11 +70,18 @@ class HttpTests(unittest.TestCase):
             ('accept', bob, {}, 'active', 'unearned'),
             ('submit', bob, {'mediaIds': [media['id']]}, 'submitted', 'unearned'),
             ('review', alice, {'approved': True}, 'achieved', 'pending'),
-            ('give', alice, {}, 'achieved', 'offered'),
-            ('receive', bob, {}, 'achieved', 'received'),
+            ('give', alice, {}, 'achieved', 'received'),
         ):
             item = post('/v1/agreements/' + item['id'] + '/actions', {'requestId': action, 'expectedVersion': item['version'], 'action': action, **fields}, actor['token'])
             self.assertEqual((expected_task, expected_reward), (item['taskState'], item['rewardState']))
+        for action in ('receive', 'dispute'):
+            status, _, payload = self.request('POST', '/v1/agreements/' + item['id'] + '/actions',
+                {'requestId': action, 'expectedVersion': item['version'], 'action': action, 'note': '旧客户端请求'}, bob['token'])
+            self.assertEqual(409, status, payload)
+            self.assertEqual('retired_action', json.loads(payload)['error']['code'])
+        status, _, payload = self.request('GET', '/v1/state', token=bob['token'])
+        self.assertEqual(200, status)
+        self.assertEqual(item, json.loads(payload)['agreements'][0])
         status, headers, payload = self.request('GET', '/v1/media/' + media['id'], token=alice['token'])
         self.assertEqual(200, status)
         self.assertEqual('image/png', headers['Content-Type'])

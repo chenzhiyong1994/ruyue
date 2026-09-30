@@ -1,4 +1,5 @@
 import base64
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -114,7 +115,7 @@ class ServiceTests(unittest.TestCase):
         self.counter += 1
         return self.call('POST', '/v1/agreements/' + item['id'] + '/actions', {'requestId': f'bad-{self.counter}', 'expectedVersion': item['version'], 'action': action, **fields}, actor['token'], status=status)
 
-    def test_two_people_complete_cumulative_agreement_and_separately_confirm_reward(self):
+    def test_two_people_complete_cumulative_agreement_then_issuer_settles_reward(self):
         alice, bob, relation = self.pair()
         item = self.agreement(alice, bob, relation)
         self.bad_action(item, alice, 'accept', status=403)
@@ -131,17 +132,13 @@ class ServiceTests(unittest.TestCase):
         item = self.action(item, alice, 'review', approved=True)
         self.assertEqual(('achieved', 'pending'), (item['taskState'], item['rewardState']))
         self.assertEqual('2026-10-03T08:00:00Z', item['rewardDueAt'])
-        item = self.action(item, alice, 'give')
-        self.assertEqual('offered', item['rewardState'])
-        self.bad_action(item, alice, 'receive', status=403)
-        item = self.action(item, bob, 'dispute', note='还没收到')
-        self.assertEqual('pending', item['rewardState'])
-        item = self.action(item, alice, 'give', note='今天一起吃饭')
-        request = {'requestId': 'receive-once', 'expectedVersion': item['version'], 'action': 'receive'}
-        item = self.call('POST', '/v1/agreements/' + item['id'] + '/actions', request, bob['token'])
-        self.assertEqual(item, self.call('POST', '/v1/agreements/' + item['id'] + '/actions', request, bob['token']))
+        self.bad_action(item, bob, 'give', status=403)
+        request = {'requestId': 'give-once', 'expectedVersion': item['version'], 'action': 'give'}
+        item = self.call('POST', '/v1/agreements/' + item['id'] + '/actions', request, alice['token'])
+        self.assertEqual(item, self.call('POST', '/v1/agreements/' + item['id'] + '/actions', request, alice['token']))
         self.assertEqual('received', item['rewardState'])
-        self.assertEqual(1, sum(event['action'] == 'receive' for event in item['events']))
+        self.assertEqual(1, sum(event['action'] == 'give' for event in item['events']))
+        self.assertFalse(any(event['action'] == 'receive' for event in item['events']))
         self.bad_action(item, alice, 'give')
         self.assertFalse(any(event['proxy'] for event in item['events']))
 
@@ -171,9 +168,12 @@ class ServiceTests(unittest.TestCase):
         item = self.action(item, alice, 'submit', note='家长代记')
         item = self.action(item, alice, 'review', approved=True)
         item = self.action(item, alice, 'give')
-        item = self.action(item, alice, 'receive')
         self.assertEqual('proxy', item['confirmationMode'])
-        self.assertTrue(item['events'][-1]['proxy'])
+        self.assertEqual('received', item['rewardState'])
+        delegated = [event for event in item['events'] if event['action'] in ('accept', 'submit')]
+        self.assertEqual(2, len(delegated))
+        self.assertTrue(all(event['proxy'] for event in delegated))
+        self.assertFalse(item['events'][-1]['proxy'])
         self.assertEqual(alice['user']['id'], item['events'][-1]['actorId'])
 
     def test_expiry_requires_mutual_extension_and_submitted_work_stays_submitted(self):
@@ -211,7 +211,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual('新的晚餐', item['reward'])
         self.assertEqual('achieved', item['taskState'])
         item = self.action(item, alice, 'give')
-        item = self.action(item, bob, 'receive')
+        self.assertEqual('received', item['rewardState'])
         self.bad_action(item, bob, 'propose_amend', changes={'reward': '清账后变更'})
 
     def test_amendment_preserves_snapshots_and_stale_version_rejected(self):
@@ -273,10 +273,51 @@ class ServiceTests(unittest.TestCase):
                 results = [future.result() for future in futures]
             self.assertEqual([200, 409], sorted(result.status for result in results))
             final = self.call('GET', '/v1/state', token=alice['token'])['agreements'][0]
-            self.assertEqual('offered', final['rewardState'])
+            self.assertEqual('received', final['rewardState'])
             self.assertEqual(1, sum(event['action'] == 'give' for event in final['events']))
         finally:
             second.close()
+
+    def test_legacy_offered_reads_as_settled_without_rewriting_history_or_receipt(self):
+        alice, bob, relation = self.pair()
+        item = self.action(self.agreement(alice, bob, relation, targetCount=1), bob, 'accept')
+        item = self.action(item, bob, 'submit', note='旧版已完成')
+        item = self.action(item, alice, 'review', approved=True)
+        item = self.action(item, alice, 'propose_amend', changes={'reward': '旧版待确认修改'})
+        path = '/v1/agreements/' + item['id'] + '/actions'
+        request = {'requestId': 'legacy-give', 'expectedVersion': item['version'], 'action': 'give'}
+        legacy = self.call('POST', path, request, alice['token'])
+        legacy['rewardState'] = 'offered'
+        self.write('/v1/relationships/' + relation['id'] + '/actions', alice['token'],
+                   expectedVersion=relation['version'], action='end')
+        self.service.close()
+        # Prepare the persisted v1 shape that an old service wrote; assertions use the API.
+        connection = sqlite3.connect(self.path)
+        try:
+            connection.execute('UPDATE agreements SET data=? WHERE id=?',
+                               (json.dumps(legacy), legacy['id']))
+            connection.execute('UPDATE receipts SET result=? WHERE actor=? AND request_id=?',
+                               (json.dumps(legacy), alice['user']['id'], request['requestId']))
+            connection.commit()
+        finally:
+            connection.close()
+        self.service = Service(self.path, clock=lambda: self.now)
+        expected = {**legacy, 'rewardState': 'received'}
+        for actor in (alice, bob):
+            self.assertEqual(expected, self.call('GET', '/v1/state', token=actor['token'])['agreements'][0])
+        self.assertEqual(legacy, self.call('POST', path, request, alice['token']))
+        self.assertFalse(any(event['action'] == 'receive' for event in expected['events']))
+        self.bad_action(expected, alice, 'give')
+        self.bad_action(expected, alice, 'propose_amend', changes={'reward': '不应改写'})
+        self.bad_action(expected, bob, 'resolve_proposal', approved=True)
+        for action in ('receive', 'dispute'):
+            result = self.bad_action(expected, bob, action, note='旧版本请求')
+            self.assertEqual('retired_action', result['error']['code'])
+        self.assertEqual(expected, self.call('GET', '/v1/state', token=bob['token'])['agreements'][0])
+        self.service.close()
+        self.service = Service(self.path, clock=lambda: self.now)
+        self.assertEqual(expected, self.call('GET', '/v1/state', token=alice['token'])['agreements'][0])
+        self.assertEqual(legacy, self.call('POST', path, request, alice['token']))
 
     def test_reward_state_events_and_retry_receipts_survive_service_restart(self):
         alice, bob, relation = self.pair()
@@ -285,22 +326,21 @@ class ServiceTests(unittest.TestCase):
         item = self.action(item, alice, 'review', approved=True)
         path = '/v1/agreements/' + item['id'] + '/actions'
         request = {'requestId': 'give-before-restart', 'expectedVersion': item['version'], 'action': 'give'}
-        offered = self.call('POST', path, request, alice['token'])
+        settled = self.call('POST', path, request, alice['token'])
         before = self.call('GET', '/v1/state', token=bob['token'])
         self.service.close()
         self.service = Service(self.path, clock=lambda: self.now)
         self.assertEqual(before, self.call('GET', '/v1/state', token=bob['token']))
-        self.assertEqual(offered, self.call('POST', path, request, alice['token']))
+        self.assertEqual(settled, self.call('POST', path, request, alice['token']))
         self.call('POST', path, {**request, 'note': '改变重试内容'}, alice['token'], status=409)
-        received = self.action(offered, bob, 'receive')
         self.service.close()
         self.service = Service(self.path, clock=lambda: self.now)
-        self.assertEqual(offered, self.call('POST', path, request, alice['token']))
+        self.assertEqual(settled, self.call('POST', path, request, alice['token']))
         persisted = self.call('GET', '/v1/state', token=alice['token'])['agreements'][0]
-        self.assertEqual(received, persisted)
+        self.assertEqual(settled, persisted)
         self.assertEqual('received', persisted['rewardState'])
-        for action in ('give', 'receive'):
-            self.assertEqual(1, sum(event['action'] == action for event in persisted['events']))
+        self.assertEqual(1, sum(event['action'] == 'give' for event in persisted['events']))
+        self.assertFalse(any(event['action'] == 'receive' for event in persisted['events']))
 
     def test_exact_deadline_allows_submission_but_later_time_requires_extension(self):
         alice, bob, relation = self.pair()

@@ -5,14 +5,13 @@ a fresh ignored evidence directory; failed mutations are never silently replayed
 """
 
 import argparse
-import os
 import secrets
 import subprocess
 import sys
 import uuid
 from pathlib import Path
 
-from smoke_pact import ROOT, PACKAGE, Device, api, await_text, click, fill, select
+from smoke_pact import ROOT, PACKAGE, Device, api, await_text, click, fill, select, default_adb
 from verify_pair import local_api, now, preferences, require, save
 
 
@@ -148,7 +147,7 @@ class ScenarioVerification:
                 fill('达成条件', '合成条件：整理一本书'), fill('目标次数', '1'), fill('完成截止日期', ''),
                 click('下一步：约定奖励'), fill('奖励内容', '合成奖励：一起阅读'), fill('兑现天数', '7'),
                 click('下一步：确认约定'), click('存为草稿' if draft else '发出约定'),
-                await_text(('草稿' if draft else '待接受') + ' · 达成后获得')]
+                await_text('草稿' if draft else '待接受')]
 
     def shared(self):
         self.stage('03-create-shared', 'a',
@@ -180,8 +179,8 @@ class ScenarioVerification:
                 ('06-publish', 'a', 'publish', '发布约定', 'proposed'),
                 ('07-accept', 'b', 'accept', '接受约定', 'active')):
             actions.append(action)
-            label = '待接受' if status == 'proposed' else '进行中'
-            self.stage(name, key, self.note(button, label + ' · 达成后获得'),
+            label = '待接受' if status == 'proposed' else '待完成'
+            self.stage(name, key, self.note(button, label),
                        lambda status=status: self.agreement(task=status, actions=actions))
 
         def pending():
@@ -208,7 +207,7 @@ class ScenarioVerification:
         self.stage('10-propose-cancel', 'a', self.note('协商取消', '等待协商确认'),
                    lambda: self.agreement(task='active', actions=actions))
         actions.append('resolve_proposal')
-        self.stage('11-approve-cancel', 'b', self.note('同意提案', '已取消 · 达成后获得'),
+        self.stage('11-approve-cancel', 'b', self.note('同意提案', '已取消'),
                    lambda: self.agreement(task='cancelled', actions=actions))
 
     def proxy(self):
@@ -232,16 +231,14 @@ class ScenarioVerification:
                    lambda: self.agreement(True, 'proposed', actions=actions))
         transitions = [
             ('14-proxy-accept', 'accept', 'active', 'unearned',
-             self.note('接受约定', '进行中 · 达成后获得', True)),
+             self.note('接受约定', '待完成', True)),
             ('15-proxy-submit', 'submit', 'submitted', 'unearned', self.open(True) +
              [click('提交完成'), fill('完成说明', '合成孩子已整理，家长代记完成情况'),
-              click('确认提交'), await_text('待验收 · 达成后获得')]),
+              click('确认提交'), await_text('待验收')]),
             ('16-proxy-review', 'review', 'achieved', 'pending',
-             self.note('验收通过', '已达成 · 奖励待兑现', True)),
-            ('17-proxy-give', 'give', 'achieved', 'offered',
-             self.note('奖励已给出', '已达成 · 已给出，待收讫', True)),
-            ('18-proxy-receive', 'receive', 'achieved', 'received',
-             self.note('确认已收到', '家长代记已结案', True)),
+             self.note('验收通过', '待兑现', True)),
+            ('17-proxy-give-final', 'give', 'achieved', 'received',
+             self.note('标记已兑现', '已兑现', True)),
         ]
         for name, action, task, reward, steps in transitions:
             actions.append(action)
@@ -252,8 +249,11 @@ class ScenarioVerification:
         require(item['executorId'] != actor, 'Child identity was replaced by the parent')
         for event in item['events']:
             require(event['actorId'] == actor, 'Proxy event lost its actual parent actor')
-            require(event['proxy'] == (event['action'] in ('accept', 'submit', 'receive')),
+            require(event['proxy'] == (event['action'] in ('accept', 'submit')),
                     'Proxy provenance differs from the action actually performed')
+        self.stage('18-proxy-settled', 'a', self.open(True) +
+                   [await_text('已兑现'), {'op': 'absent', 'label': '确认已收到'},
+                    {'op': 'absent', 'label': '尚未收到'}, {'op': 'absent', 'label': '留下说明'}])
 
     def filters(self):
         self.stage('19-shared-filter-navigation', 'a',
@@ -293,7 +293,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--serial-a', required=True)
     parser.add_argument('--serial-b', required=True)
-    parser.add_argument('--adb', default=str(Path(os.environ.get('ANDROID_HOME', '')) / 'platform-tools/adb.exe'))
+    parser.add_argument('--adb', default=default_adb())
     parser.add_argument('--api', default='http://127.0.0.1:8765')
     parser.add_argument('--evidence-dir', default='artifacts/pact/scenarios')
     args = parser.parse_args()

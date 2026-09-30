@@ -8,7 +8,6 @@ Credentials and checkpoints stay under an ignored artifacts/pact directory.
 import argparse
 import ipaddress
 import json
-import os
 import secrets
 import subprocess
 import sys
@@ -20,7 +19,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
 
-from smoke_pact import ROOT, PACKAGE, Device, api, await_text, click, fill, select
+from smoke_pact import ROOT, PACKAGE, Device, api, await_text, click, fill, select, default_adb
 
 
 def now():
@@ -84,6 +83,8 @@ class PairVerification:
             require(args.resume, 'Fixture already exists; use --resume or choose a new evidence directory')
             self.fixture = json.loads(self.fixture_path.read_text(encoding='utf-8'))
             require(self.fixture.get('formatVersion') == 1, 'Unsupported fixture format')
+            require(self.fixture.get('settlementMode') == 'issuer_final',
+                    'This fixture predates final issuer settlement; preserve it and use a fresh directory')
             require(self.fixture['api'] == self.base, 'Resume must use the same API origin')
             require(self.fixture['serials'] == {'a': args.serial_a, 'b': args.serial_b},
                     'Resume must use the original two device serials')
@@ -91,7 +92,7 @@ class PairVerification:
             require(not args.resume, '--resume requires an existing fixture.json')
             suffix = uuid.uuid4().hex[:12]
             self.fixture = {
-                'formatVersion': 1, 'id': suffix, 'createdAt': now(), 'api': self.base,
+                'formatVersion': 1, 'settlementMode': 'issuer_final', 'id': suffix, 'createdAt': now(), 'api': self.base,
                 'serials': {'a': args.serial_a, 'b': args.serial_b},
                 'setup': 'API registers synthetic accounts and creates/joins their private relationship; UI performs login and every agreement mutation.',
                 'relationshipName': '双端合成验收 ' + suffix,
@@ -296,11 +297,11 @@ class PairVerification:
                         click('上一步'), await_text('合成验收：一起安排一次晚餐'),
                         click('上一步'), await_text(self.fixture['agreementTitle']),
                         click('下一步：约定奖励'), click('下一步：确认约定'), click('发出约定'),
-                        await_text('待接受 · 达成后获得')]
+                        await_text('待接受')]
         self.stage('02-create-agreement', 'a', create_steps, None, current)
         transitions = [
             ('03-accept', 'b', 'accept', 'active', 'unearned', 0,
-             self.note_steps('接受约定', '合成执行方接受双方条件', '进行中 · 达成后获得')),
+             self.note_steps('接受约定', '合成执行方接受双方条件', '待完成')),
             ('04-progress-first', 'b', 'progress', 'active', 'unearned', 1,
              self.open_detail() + [click('记录进度'), fill('本次次数', '1'), fill('进度说明', '合成第一次散步'),
                                    click('保存进度'), await_text('进度：1 / 2 次')]),
@@ -310,17 +311,11 @@ class PairVerification:
             ('06-submit-with-photo', 'b', 'submit', 'submitted', 'unearned', 2,
              self.open_detail() + [click('提交完成'), fill('完成说明', '两次合成记录已经完成，附合成图片'),
                                    {'op': 'photo', 'label': '添加照片'}, await_text('已添加 1 张照片'),
-                                   click('确认提交'), await_text('待验收 · 达成后获得')]),
+                                   click('确认提交'), await_text('待验收')]),
             ('07-review', 'a', 'review', 'achieved', 'pending', 2,
-             self.note_steps('验收通过', '合成给予方确认达成', '已达成 · 奖励待兑现')),
-            ('08-give-first', 'a', 'give', 'achieved', 'offered', 2,
-             self.note_steps('奖励已给出', '首次合成给出记录', '已达成 · 已给出，待收讫')),
-            ('09-dispute', 'b', 'dispute', 'achieved', 'pending', 2,
-             self.note_steps('尚未收到', '合成核验：整份奖励尚未收到', '已达成 · 奖励待兑现')),
-            ('10-give-again', 'a', 'give', 'achieved', 'offered', 2,
-             self.note_steps('奖励已给出', '再次合成给出整份奖励', '已达成 · 已给出，待收讫')),
-            ('11-receive', 'b', 'receive', 'achieved', 'received', 2,
-             self.note_steps('确认已收到', '合成执行方确认全部收到', '双方已确认，约定全部完成')),
+             self.note_steps('验收通过', '合成给予方确认达成', '待兑现')),
+            ('08-give-final', 'a', 'give', 'achieved', 'received', 2,
+             self.note_steps('标记已兑现', '合成兑现方已实际完成整份奖励', '已兑现')),
         ]
         for name, key, action, task, reward, progress, steps in transitions:
             actions.append(action)
@@ -329,9 +324,11 @@ class PairVerification:
             current = following
         final = self.verify(current)
         for key, device in self.devices.items():
-            device.stage('12-final-rewards-' + key,
+            device.stage('09-final-rewards-' + key,
                          [await_text('账户设置'), click('奖励'), await_text('查看约定：' + self.fixture['agreementTitle']),
-                          click('查看约定：' + self.fixture['agreementTitle']), await_text('双方已确认，约定全部完成'),
+                          click('查看约定：' + self.fixture['agreementTitle']), await_text('已兑现'),
+                          {'op': 'absent', 'label': '确认已收到'}, {'op': 'absent', 'label': '尚未收到'},
+                          {'op': 'absent', 'label': '留下说明'},
                           {'op': 'layout'}])
         report = {'status': 'passed', 'completedAt': now(), 'fixtureId': self.fixture['id'],
                   'setupMethod': self.fixture['setup'], 'businessMutationMethod': 'Android UI only',
@@ -346,7 +343,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--serial-a', required=True)
     parser.add_argument('--serial-b', required=True)
-    parser.add_argument('--adb', default=str(Path(os.environ.get('ANDROID_HOME', '')) / 'platform-tools/adb.exe'))
+    parser.add_argument('--adb', default=default_adb())
     parser.add_argument('--api', default='http://127.0.0.1:8765')
     parser.add_argument('--evidence-dir', default='artifacts/pact/pair')
     parser.add_argument('--resume', action='store_true', help='Reuse fixture and skip verified completed stages; never replay a partial mutation')

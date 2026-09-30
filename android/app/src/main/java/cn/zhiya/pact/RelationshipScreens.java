@@ -11,6 +11,7 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.PopupMenu;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -34,37 +35,42 @@ final class RelationshipScreens {
     }
 
     void render(LinearLayout parent) {
-        LinearLayout welcome = PactUi.hero(activity, parent);
-        welcome.addView(PactUi.badge(activity, "我们 · 彼此的私人空间"));
-        welcome.addView(PactUi.serif(activity, "把重要的人，\n放进彼此的日常。", 28));
-        muted(welcome, "从一段关系开始，把答应的小事，慢慢做成共同的记忆。", 14);
-        welcome.addView(PactUi.button(activity, "创建关系", true, v -> create()));
-        welcome.addView(PactUi.button(activity, "加入关系", false, v -> join()));
         JSONObject current = state.get();
         JSONArray relationships = current == null ? null : current.optJSONArray("relationships");
+        LinearLayout toolbar = PactUi.row(activity);
+        parent.addView(toolbar);
+        toolbar.addView(PactUi.compactButton(activity, "创建关系", true, v -> create()));
+        LinearLayout.LayoutParams joinParams=new LinearLayout.LayoutParams(-2,-2);joinParams.leftMargin=PactUi.dp(activity,12);
+        toolbar.addView(PactUi.textButton(activity, "加入关系", v -> join()),joinParams);
+        if ((relationships != null && relationships.length() > 1) || !relationshipFilter.get().isEmpty()) {
+            View scope = PactUi.textButton(activity, "查看范围", v -> chooseRelationship.run());
+            if (compactLayout()) {
+                parent.addView(scope);
+            } else {
+                toolbar.addView(new View(activity), new LinearLayout.LayoutParams(0, 1, 1));
+                toolbar.addView(scope);
+            }
+        }
+        String scopeName = "";
+        for (int i = 0; relationships != null && i < relationships.length(); i++) {
+            JSONObject row = relationships.optJSONObject(i);
+            if (row != null && row.optString("id").equals(relationshipFilter.get())) scopeName = row.optString("name");
+        }
+        if (!scopeName.isEmpty()) {
+            PactUi.gap(activity, parent, 8);
+            muted(parent, "当前查看：" + scopeName, 13);
+        }
+        PactUi.gap(activity, parent, 16);
         if (relationships == null || relationships.length() == 0) {
             LinearLayout empty = PactUi.card(activity, parent);
-            empty.addView(PactUi.serif(activity, "给「我们」，留一个位置。", 22));
-            muted(empty, "还没有关系。从与你一起完成约定的人开始。", 15);
-            divider(empty);
-            text(empty, "邀请对方，各自确认", 16);
-            muted(empty, "彼此使用自己的账号。加入后，约定只在这段关系里分享。", 14);
-            text(empty, "为孩子，建立代记档案", 16);
-            muted(empty, "由家长记录孩子的参与与收讫，每一步都会注明来源。", 14);
+            PactMood.emptyIllustration(activity, empty, false);
+            empty.addView(PactUi.title(activity, "还没有关系", 19));
+            PactUi.gap(activity, empty, 8);
+            muted(empty, "创建关系邀请对方，或使用邀请码加入。双方使用各自的账号。", 14);
+            PactUi.gap(activity, empty, 8);
+            muted(empty, "孩子没有账号时，可建立家长代记关系；操作会标明代记来源。", 14);
             return;
         }
-        LinearLayout section=PactUi.sectionTitle(activity,parent,"","");section.removeAllViews();
-        LinearLayout heading=PactUi.row(activity);section.addView(heading);
-        heading.addView(PactUi.title(activity,"每一段我们",19),new LinearLayout.LayoutParams(0,-2,1));
-        if(relationships.length()>1||!relationshipFilter.get().isEmpty()){
-            android.widget.Button scope=PactUi.button(activity,"查看范围",false,v->chooseRelationship.run());
-            scope.setTextSize(13);scope.setBackgroundColor(android.graphics.Color.TRANSPARENT);
-            scope.setPadding(PactUi.dp(activity,8),0,0,0);
-            heading.addView(scope,new LinearLayout.LayoutParams(-2,-2));
-        }
-        String scopeName="";
-        for(int i=0;i<relationships.length();i++){JSONObject row=relationships.optJSONObject(i);if(row!=null&&row.optString("id").equals(relationshipFilter.get()))scopeName=row.optString("name");}
-        muted(section,scopeName.isEmpty()?"关系独立保存，心意各有归处。":"当前查看："+scopeName+" · 可在查看范围中恢复全部",13);
         int shown = 0;
         for (int i = relationships.length() - 1; i >= 0; i--) {
             JSONObject relationship = relationships.optJSONObject(i);
@@ -79,70 +85,120 @@ final class RelationshipScreens {
 
     private void card(LinearLayout parent, JSONObject relationship) {
         LinearLayout card = PactUi.card(activity, parent);
+        card.setBackground(PactUi.softSurface(activity,"proxy".equals(relationship.optString("mode")),20));
         String status = relationship.optString("status");
         boolean proxy = "proxy".equals(relationship.optString("mode"));
+        LinearLayout heading = PactUi.row(activity);
+        heading.setGravity(Gravity.TOP);
+        card.addView(heading);
+        TextView avatar = PactUi.avatar(activity, relationship.optString("name"), 40);
+        LinearLayout.LayoutParams avatarParams = new LinearLayout.LayoutParams(PactUi.dp(activity, 40), PactUi.dp(activity, 40));
+        avatarParams.rightMargin = PactUi.dp(activity, 12);
+        heading.addView(avatar, avatarParams);
+        LinearLayout identity = PactUi.column(activity);
+        heading.addView(identity, new LinearLayout.LayoutParams(0, -2, 1));
+        identity.addView(PactUi.title(activity, relationship.optString("name"), 18));
+        PactUi.gap(activity, identity, 4);
+        muted(identity, typeLabel(relationship.optString("type")) + " · "
+                + (proxy ? "家长代记" : "双方账号"), 12);
+        PactUi.gap(activity, identity, 8);
         TextView statusView = PactUi.badge(activity, statusLabel(status));
         if ("ended".equals(status)) {
             statusView.setTextColor(PactUi.MUTED);
             statusView.setBackground(PactUi.background(PactUi.LAVENDER, PactUi.dp(activity, 12)));
         }
-        card.addView(statusView);
-        card.addView(PactUi.serif(activity, relationship.optString("name"), 25));
-        muted(card, typeLabel(relationship.optString("type")) + " · "
-                + (proxy ? "家长代记" : "双方账号"), 13);
-        divider(card);
-        JSONArray members = relationship.optJSONArray("members");
-        for (int i = 0; members != null && i < members.length(); i++) {
-            JSONObject member = members.optJSONObject(i);
-            if (member != null) member(card, member);
+        identity.addView(statusView);
+        if (!"ended".equals(status)) {
+            View more = PactUi.iconButton(activity, "关系操作：" + relationship.optString("name"), "more",
+                    view -> showActions(view, relationship));
+            heading.addView(more);
         }
+        PactUi.gap(activity, card, 16);
+        PactUi.divider(activity, card);
+        PactUi.gap(activity, card, 12);
+        text(card, memberSummary(relationship), 14);
+        PactUi.gap(activity, card, 8);
+        muted(card, recordSummary(relationship), 12);
         if ("ended".equals(status)) {
-            note(card, "记录仍在，承诺仍算数", "关系已解除，共同记录仍保留；已达成的奖励可以继续结算。", false);
+            PactUi.gap(activity, card, 12);
+            muted(card, "关系已解除，记录保留；已达成的奖励仍可结清。", 13);
             return;
         }
-        if (proxy) note(card, "家长代记，来源清楚", "孩子的接受、提交与收讫由家长代记，完成时会显示“家长代记已结案”。", true);
-        else if ("active".equals(status)) muted(card, "各自确认，一起完成。这里的约定只与你们分享。", 14);
+        if (proxy) {
+            PactUi.gap(activity, card, 12);
+            muted(card, "家长代记：接受与提交会记录实际操作人。", 12);
+        }
         String code = relationship.isNull("inviteCode") ? "" : relationship.optString("inviteCode");
         if ("inviting".equals(status) && me().equals(relationship.optString("ownerId"))) {
-            LinearLayout invitation = note(card, "把邀请，交给重要的人", "对方加入后，你们就可以开始第一份约定。", false);
+            PactUi.gap(activity, card, 16);
+            PactUi.divider(activity, card);
+            PactUi.gap(activity, card, 12);
+            LinearLayout invitation = PactUi.column(activity);
+            card.addView(invitation);
             if (!code.isEmpty()) {
                 TextView invitationCode = PactUi.text(activity, "邀请码：" + code, 14, PactUi.INK);
                 invitationCode.setTypeface(Typeface.MONOSPACE);
                 invitationCode.setTextIsSelectable(true);
                 invitation.addView(invitationCode);
+                PactUi.gap(activity, invitation, 4);
                 muted(invitation, "邀请有效期：" + PactLabels.date(relationship.optString("inviteExpiresAt")), 13);
-                invitation.addView(PactUi.button(activity, "复制邀请码", true, v -> copy(code)));
             }
-            invitation.addView(PactUi.button(activity, "重新生成邀请", false, v -> renew(relationship)));
+            if (!code.isEmpty()) {
+                PactUi.gap(activity, invitation, 4);
+                invitation.addView(PactUi.textButton(activity, "复制邀请码", v -> copy(code)));
+            }
         }
-        divider(card);
-        card.addView(PactUi.button(activity, "修改称呼", false, v -> rename(relationship)));
-        card.addView(PactUi.button(activity, "解除关系", false, v -> end(relationship)));
     }
 
-    private void member(LinearLayout parent, JSONObject member) {
-        boolean child = "child".equals(member.optString("kind"));
-        boolean self = me().equals(member.optString("id"));
-        String name = member.optString("name");
-        LinearLayout row = PactUi.row(activity);
-        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, -2);
-        rowParams.topMargin = PactUi.dp(activity, 6);
-        rowParams.bottomMargin = PactUi.dp(activity, 8);
-        parent.addView(row, rowParams);
-        String initial = name.isEmpty() ? "人" : name.substring(0, name.offsetByCodePoints(0, 1));
-        TextView avatar = PactUi.title(activity, initial, 19);
-        avatar.setGravity(Gravity.CENTER);
-        avatar.setPadding(0, 0, 0, 0);
-        avatar.setTextColor(PactUi.ROSE);
-        avatar.setBackground(PactUi.background(child ? PactUi.LAVENDER : PactUi.BLUSH, PactUi.dp(activity, 22)));
-        avatar.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        row.addView(avatar, new LinearLayout.LayoutParams(PactUi.dp(activity, 44), PactUi.dp(activity, 44)));
-        LinearLayout identity = PactUi.column(activity);
-        LinearLayout.LayoutParams identityParams = new LinearLayout.LayoutParams(0, -2, 1);
-        identityParams.leftMargin = PactUi.dp(activity, 12);
-        row.addView(identity, identityParams);
-        identity.addView(PactUi.title(activity, name, 17));
-        muted(identity, child ? "孩子档案 · 由家长代记" : self ? "我 · 本人账号" : "对方 · 独立账号", 13);
+    private boolean compactLayout() {
+        return activity.getResources().getConfiguration().screenWidthDp < 360
+                || activity.getResources().getConfiguration().fontScale >= 1.3f;
+    }
+
+    private void showActions(View anchor, JSONObject relationship) {
+        PopupMenu menu = new PopupMenu(activity, anchor);
+        menu.getMenu().add(0, 1, 0, "修改称呼");
+        if ("inviting".equals(relationship.optString("status")) && me().equals(relationship.optString("ownerId"))) {
+            menu.getMenu().add(0, 2, 1, "重新生成邀请");
+        }
+        menu.getMenu().add(0, 3, 2, "解除关系");
+        menu.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == 1) rename(relationship);
+            else if (item.getItemId() == 2) renew(relationship);
+            else if (item.getItemId() == 3) end(relationship);
+            return true;
+        });
+        menu.show();
+    }
+
+    private String memberSummary(JSONObject relationship) {
+        StringBuilder summary = new StringBuilder();
+        JSONArray members = relationship.optJSONArray("members");
+        for (int i = 0; members != null && i < members.length(); i++) {
+            JSONObject member = members.optJSONObject(i);
+            if (member == null) continue;
+            if (summary.length() > 0) summary.append(" · ");
+            summary.append(member.optString("name"));
+            summary.append("child".equals(member.optString("kind")) ? "（家长代记）"
+                    : me().equals(member.optString("id")) ? "（我）" : "（对方）");
+        }
+        return summary.toString();
+    }
+
+    private String recordSummary(JSONObject relationship) {
+        int total = 0, active = 0, rewards = 0;
+        JSONObject current = state.get();
+        JSONArray agreements = current == null ? null : current.optJSONArray("agreements");
+        for (int i = 0; agreements != null && i < agreements.length(); i++) {
+            JSONObject item = agreements.optJSONObject(i);
+            if (item == null || !relationship.optString("id").equals(item.optString("relationshipId"))) continue;
+            total++;
+            if ("active".equals(item.optString("taskState"))) active++;
+            String reward = item.optString("rewardState");
+            if ("achieved".equals(item.optString("taskState")) && "pending".equals(reward)) rewards++;
+        }
+        return "约定 " + total + ("ended".equals(relationship.optString("status")) ? "" : " · 待完成 " + active)
+                + " · 待兑现 " + rewards;
     }
 
     private LinearLayout note(LinearLayout parent, String title, String description, boolean lavender) {
@@ -154,22 +210,13 @@ final class RelationshipScreens {
         params.bottomMargin = PactUi.dp(activity, 6);
         parent.addView(box, params);
         box.addView(PactUi.title(activity, title, 16));
+        PactUi.gap(activity, box, 8);
         muted(box, description, 14);
         return box;
     }
 
-    private void divider(LinearLayout parent) {
-        View line = new View(activity);
-        line.setBackgroundColor(PactUi.LINE);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, PactUi.dp(activity, 1));
-        params.topMargin = PactUi.dp(activity, 12);
-        params.bottomMargin = PactUi.dp(activity, 12);
-        parent.addView(line, params);
-    }
-
     private void create() {
         PactForm form = new PactForm(activity, "创建关系");
-        muted(form.fields, "给彼此一个空间，从一份认真说好的小事开始。", 15);
         EditText name = PactUi.input(activity, form.fields, "关系名称", "", false);
         Spinner type = spinner(form.fields, "关系类型", new String[]{"亲子", "情侣", "自定义"});
         Spinner mode = spinner(form.fields, "关系模式", new String[]{"双方账号", "家长代记"});
@@ -201,7 +248,6 @@ final class RelationshipScreens {
 
     private void join() {
         PactForm form = new PactForm(activity, "加入关系");
-        form.fields.addView(PactUi.badge(activity, "接受邀请 · 走进我们"));
         EditText code = PactUi.input(activity, form.fields, "邀请码", "", false);
         text(form.fields, "填写对方发送的邀请码。加入后，仅你们两人可以查看这段关系的约定。", 14);
         form.show("确认加入", v -> {
@@ -213,7 +259,7 @@ final class RelationshipScreens {
 
     private void rename(JSONObject relationship) {
         PactForm form = new PactForm(activity, "修改称呼");
-        muted(form.fields, "在「" + relationship.optString("name") + "」里，让对方用熟悉的名字叫你。", 15);
+        muted(form.fields, "所属关系：" + relationship.optString("name"), 14);
         String current = "";
         JSONArray members = relationship.optJSONArray("members");
         for (int i = 0; members != null && i < members.length(); i++) {
@@ -239,7 +285,7 @@ final class RelationshipScreens {
     private void end(JSONObject relationship) {
         PactForm form = new PactForm(activity, "确认解除关系");
         text(form.fields, "你将解除「" + relationship.optString("name") + "」。双方将停止新增约定与普通互动。", 17);
-        note(form.fields, "结束关系，不抹去已经答应的事", "已有共同记录继续保留，已经达成的奖励不会被取消，仍需完成兑现和收讫。", true);
+        note(form.fields, "已有记录与奖励保留", "已经达成的奖励不会被取消，仍需完成兑现。", true);
         form.show("确认解除关系", v -> submitAction(form, relationship, "end"));
     }
 
@@ -268,13 +314,14 @@ final class RelationshipScreens {
     }
 
     private Spinner spinner(LinearLayout parent, String label, String[] choices) {
-        muted(parent, label, 14);
-        Spinner spinner = new Spinner(activity); spinner.setContentDescription(label); spinner.setMinimumHeight(PactUi.dp(activity, 52));
-        spinner.setPopupBackgroundDrawable(PactUi.background(PactUi.BACKGROUND, PactUi.dp(activity, 14)));
+        muted(parent, label, 13);
+        PactUi.gap(activity, parent, 8);
+        Spinner spinner = new Spinner(activity); spinner.setContentDescription(label);
         ArrayAdapter<String> adapter = new ArrayAdapter<>(activity, android.R.layout.simple_spinner_item, choices);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); spinner.setAdapter(adapter);
+        PactUi.styleSpinner(activity, spinner);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
-        params.bottomMargin = PactUi.dp(activity, 12);
+        params.bottomMargin = PactUi.dp(activity, 20);
         parent.addView(spinner, params); return spinner;
     }
 

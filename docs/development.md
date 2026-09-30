@@ -1,5 +1,7 @@
 # Development
 
+This is the 1.4.3 / version code 12 source snapshot of an unfinished experimental prototype. Development is paused as of September 30, 2026; these instructions support local evaluation and independent forks, not a maintained deployment service.
+
 Ruyue contains a native Java Android client and a Python standard-library HTTP service backed by SQLite. Both participants connect to the same service. The [API contract](api.md) defines the shared state and permissions; the [architecture](architecture.md) describes storage and consistency.
 
 ## Toolchain
@@ -57,7 +59,7 @@ sh android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug :app:lin
 
 Use `sh` to run the wrapper even if the executable permission was not preserved by your checkout. Do not substitute a globally installed Gradle version.
 
-The result is `android/app/build/outputs/apk/debug/app-debug.apk`. The current source version is 1.2.3 / version code 6. The namespace is `cn.zhiya.pact`; Debug uses the separate application ID `cn.zhiya.pact.preview`. Build outputs and `android/local.properties` stay out of Git.
+The result is `android/app/build/outputs/apk/debug/app-debug.apk`. The current source version is 1.4.3 / version code 12. The namespace is `cn.zhiya.pact`; Debug uses the separate application ID `cn.zhiya.pact.preview`. Build outputs and `android/local.properties` stay out of Git. There is no downloadable APK release or commitment to publish future binaries.
 
 ## Connect the app locally
 
@@ -73,7 +75,9 @@ In the app, open **开发连接设置** and enter `http://127.0.0.1:8765`. This 
 
 `adb reverse` connects a device port to the computer running `adb`; it works only while that local connection exists. The standard Android emulator can alternatively use `http://10.0.2.2:8765` to reach the host. Debug cleartext exceptions are restricted to local addresses. This is not an internet deployment procedure.
 
-The visible navigation labels are **日常、约定、奖励、我们**. Their accessibility descriptions remain **首页、约定、奖励、关系** for UI automation. Relationship scope is selected through **我们 → 每一段我们 → 查看范围 → 应用范围** when there is more than one relationship or an existing scope selection. Canceling that dialog does not apply the tentative choice.
+The visible navigation labels are **日常、约定、奖励、我们**. Their accessibility descriptions remain **首页、约定、奖励、关系** for UI automation. Relationship scope is selected through **我们 → 查看范围 → 应用范围** when there is more than one relationship or an existing scope selection. Canceling that dialog does not apply the tentative choice.
+
+The main status sequence is **待接受 → 待完成 → 待验收 → 待兑现 → 已兑现**. After review, the reward giver marks fulfillment and the agreement closes; there is no recipient receipt step. Details use one progress history, including creation and acceptance, without a separate “留下说明” entry. See the [user guide](user-guide.md) for the complete interaction flow.
 
 Do not uninstall an existing app or clear its data merely to make an installation or test succeed. For scripted interaction tests, use the dedicated environments described in [testing](testing.md).
 
@@ -91,7 +95,7 @@ The signing variable names match the existing Gradle configuration. They are not
 
 Release builds reject an absent or invalid HTTPS endpoint and missing signing configuration. Those build checks do not make the backend production-ready. Hosted operation still requires a reviewed deployment, account recovery, backup and restore procedures, privacy and retention decisions, and operational support. The repository supplies no production API deployment or managed account service. See [SECURITY.md](../SECURITY.md).
 
-The [project website](https://chenzhiyong1994.github.io/ruyue/) is a static showcase, separate from the backend. No APK release is distributed as part of the initial source publication.
+The [project website](https://chenzhiyong1994.github.io/ruyue/) is a static showcase, separate from the backend. Development is paused; hosted operation, production readiness, maintenance, replies, and future releases are not promised.
 
 ## Repository map
 
@@ -102,4 +106,6 @@ The [project website](https://chenzhiyong1994.github.io/ruyue/) is a static show
 - `docs/`: requirements, API, architecture, usage, and verification instructions.
 - `site/`: public project page and screenshots containing synthetic data.
 
-Follow [CONTRIBUTING.md](../CONTRIBUTING.md) and [testing](testing.md) for changes. The public source does not include runtime databases, credential-bearing fixtures, private planning records, or internal iteration reports.
+The decorative illustrations are bundled PNG assets, not a runtime AI feature or an external API dependency. Their provenance and generation prompts are in [Illustration provenance](design/ruyue-illustrations.md).
+
+Follow [CONTRIBUTING.md](../CONTRIBUTING.md) and [testing](testing.md) for changes. The public source does not include runtime databases or credential-bearing fixtures. Use synthetic accounts and a separate test database to evaluate your checkout.
