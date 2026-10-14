@@ -1,12 +1,30 @@
+![Ruyue — Small promises, thoughtfully kept. Version 1.0.0, open-source Android preview.](site/assets/cover.svg)
+
+<p align="center">
+  <a href="README.zh-CN.md">简体中文</a> ·
+  <a href="https://chenzhiyong1994.github.io/ruyue/en/">Project page</a> ·
+  <a href="https://github.com/chenzhiyong1994/ruyue/releases/tag/v1.0.0">Get 1.0.0</a> ·
+  <a href="docs/download.md#english-quick-start">Setup guide</a> ·
+  <a href="docs/development.md">Development</a>
+</p>
+
 # Ruyue · 如约
 
-[简体中文](README.zh-CN.md) · [Project page](https://chenzhiyong1994.github.io/ruyue/) · [Development](docs/development.md) · [Testing](docs/testing.md)
+**Small promises, thoughtfully kept.** Ruyue gives private agreements a clear home: decide on a goal and a reward, accept the terms, record progress, review completion, and follow through.
 
-**An unfinished, experimental Android prototype. Development is paused as of September 30, 2026.** This is a source-code snapshot for learning, experimentation, and independent forks. There is no commitment to continued development, maintenance, issue or pull-request responses, security fixes, or production readiness.
+An open-source **native Android app + Python backend**, with a warm Simplified Chinese interface. The **1.0.0 development preview** is available for Android 8.0 and newer. Run your own backend to explore the shared workflow; no hosted account service is provided.
 
-Ruyue helps people who know each other manage private agreements: define a goal and a reward, accept the terms, record progress, review completion, and mark the reward fulfilled. The interface is currently Simplified Chinese. The source snapshot is **1.4.3 / version code 12**.
+## Download 1.0.0
 
-The repository includes the Android client and a backend you run locally. It provides no hosted account service or downloadable APK release; build the development preview from source.
+| Get started | Download |
+| --- | --- |
+| **Android preview** · Android 8.0+ | [**Download APK ↓**](https://github.com/chenzhiyong1994/ruyue/releases/download/v1.0.0/ruyue-1.0.0-preview.apk) |
+| **Source code** · Includes the Python backend | [Download source ZIP](https://github.com/chenzhiyong1994/ruyue/archive/refs/tags/v1.0.0.zip) |
+| **Release details** · Checksums and build information | [Release notes & files](https://github.com/chenzhiyong1994/ruyue/releases/tag/v1.0.0) |
+
+**First time here?** Follow the [installation guide](docs/download.md#english-quick-start): start the Python service, install the APK, then connect a test account. Both participants need the same backend. The APK is a debug-signed development preview, with version code **13**; use synthetic data for evaluation.
+
+Public version 1.0.0 renumbers the earlier internal 1.4.3 snapshot while increasing the Android version code. See [download and upgrade notes](docs/download.md) before updating an existing installation.
 
 ## What it does
 
@@ -35,7 +53,7 @@ Native Android screens using synthetic demonstration data.
 
 The two decorative still-life illustrations were generated with AI and are bundled locally. Their source, prompts, and usage are documented in [Illustration provenance](docs/design/ruyue-illustrations.md).
 
-## Run locally
+## Build from source
 
 Prepare **Python 3.11+**, **JDK 17**, and an Android SDK with **Platform 36**, SDK Build-Tools, and Platform-Tools. Set `JAVA_HOME` and `ANDROID_HOME`, and add `adb` to `PATH`. The app supports **Android 8.0 / API 26+**. Use the included Gradle Wrapper; the first build requires internet access to download dependencies.
 
@@ -74,8 +92,11 @@ The native Java client talks to a Python standard-library HTTP service, which st
 
 This prototype does not provide production hosting, account recovery, managed backups, operational support, or a maintained security support window. Debug signing and a successful local build are not production-readiness guarantees. Use synthetic data for evaluation. See [Security](SECURITY.md) before considering any deployment beyond local testing.
 
+Regular app development has been paused since September 30, 2026. This 1.0.0 release packages the existing features for download; the project remains experimental and unfinished. Continued development, maintenance, responses to issues or pull requests, and security fixes are not promised.
+
 | Document | Contents |
 | --- | --- |
+| [Download and setup](docs/download.md) | APK, checksums, local connection, and upgrade notes |
 | [Development](docs/development.md) | Toolchain, local service, Android build and configuration |
 | [Testing](docs/testing.md) | Unit, HTTP, Android and isolated native checks |
 | [User guide](docs/user-guide.md) | App walkthrough, in Chinese |

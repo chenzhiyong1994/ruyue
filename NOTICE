@@ -1,4 +1,4 @@
-Ruyue / 濡傜害
+Ruyue / 如约
 
 The Gradle Wrapper files in android/gradle/wrapper/ and android/gradlew*
 are distributed by the Gradle project under Apache License 2.0.
@@ -10,5 +10,6 @@ Android UI icons and vector artwork are drawn by this project. The two PNG
 illustrations in android/app/src/main/res/drawable-nodpi/ are AI-generated;
 prompts and processing notes are in docs/design/ruyue-illustrations.md.
 They are included under the project MIT license to the extent applicable
-rights can be licensed. Images under site/assets/ are native screenshots
-using synthetic demonstration data, not real family records.
+rights can be licensed. PNG images under site/assets/ are native screenshots using synthetic
+demonstration data, not real family records. The SVG cover and brand mark
+are original vector artwork created for this project.

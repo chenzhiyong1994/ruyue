@@ -1,6 +1,6 @@
 # Development
 
-This is the 1.4.3 / version code 12 source snapshot of an unfinished experimental prototype. Development is paused as of September 30, 2026; these instructions support local evaluation and independent forks, not a maintained deployment service.
+This is the 1.0.0 / version code 13 source snapshot of an unfinished experimental prototype. Development is paused as of September 30, 2026; these instructions support local evaluation and independent forks, not a maintained deployment service.
 
 Ruyue contains a native Java Android client and a Python standard-library HTTP service backed by SQLite. Both participants connect to the same service. The [API contract](api.md) defines the shared state and permissions; the [architecture](architecture.md) describes storage and consistency.
 
@@ -12,7 +12,7 @@ Ruyue contains a native Java Android client and a Python standard-library HTTP s
 | Java | JDK 17 |
 | Android SDK | Platform 36, SDK Build-Tools, Platform-Tools; an emulator is optional for manual use |
 | Android device | API 26 or later |
-| Gradle | Use `android/gradlew` or `android/gradlew.bat`; wrapper version 8.14.5 |
+| Gradle | Use `android/gradlew` or `android/gradlew.bat`; wrapper version 8.14.6 |
 | Android Gradle Plugin | 8.13.2, declared in `android/build.gradle` |
 
 Set `JAVA_HOME` to your JDK 17 installation and `ANDROID_HOME` to your SDK. Add the SDK's `platform-tools` directory to `PATH` for `adb`. Install the required SDK packages and accept their licenses through Android Studio or the Android SDK tools. The initial Gradle build needs network access to download the wrapper distribution and dependencies. Use offline mode only after they are cached.
@@ -59,7 +59,7 @@ sh android/gradlew -p android :app:testDebugUnitTest :app:assembleDebug :app:lin
 
 Use `sh` to run the wrapper even if the executable permission was not preserved by your checkout. Do not substitute a globally installed Gradle version.
 
-The result is `android/app/build/outputs/apk/debug/app-debug.apk`. The current source version is 1.4.3 / version code 12. The namespace is `cn.zhiya.pact`; Debug uses the separate application ID `cn.zhiya.pact.preview`. Build outputs and `android/local.properties` stay out of Git. There is no downloadable APK release or commitment to publish future binaries.
+The result is `android/app/build/outputs/apk/debug/app-debug.apk`. The current source version is 1.0.0 / version code 13. The namespace is `cn.zhiya.pact`; Debug uses the separate application ID `cn.zhiya.pact.preview`. Build outputs and `android/local.properties` stay out of Git. A debug-signed APK is available for 1.0.0; see [Downloads](download.md). Future binary releases are not promised.
 
 ## Connect the app locally
 

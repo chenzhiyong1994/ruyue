@@ -1,12 +1,30 @@
+![如约 — 认真说好，温柔做到。1.0.0 开源 Android 预览版。](site/assets/cover.svg)
+
+<p align="center">
+  <a href="README.md">English</a> ·
+  <a href="https://chenzhiyong1994.github.io/ruyue/">项目主页</a> ·
+  <a href="https://github.com/chenzhiyong1994/ruyue/releases/tag/v1.0.0">下载 1.0.0</a> ·
+  <a href="docs/download.md">安装指南</a> ·
+  <a href="docs/development.md">开发文档</a>
+</p>
+
 # 如约 · Ruyue
 
-[English](README.md) · [项目主页](https://chenzhiyong1994.github.io/ruyue/) · [开发指南](docs/development.md) · [测试指南](docs/testing.md)
+**认真说好，温柔做到。** 如约为彼此认识的人留一个记录约定的小空间：说清目标和奖励，接受条款，记下进度，验收完成，再把答应的心意兑现。
 
-**这是一个未完成的实验性安卓原型。截至 2026 年 9 月 30 日，开发已暂停。** 此次公开源码供学习、实验和独立 fork 使用，不承诺继续迭代、维护、回复 Issue 或 PR、修复安全问题，也不保证生产可用。
+开源的 **原生 Android 客户端 + Python 后端**，采用温暖的简体中文界面。**1.0.0 开发预览包**已提供下载，支持 Android 8.0 及以上。自行运行后端，即可体验双方共享的完整流程；项目不提供托管账号服务。
 
-如约帮助彼此认识的人管理私人约定：说清目标和奖励，接受条款，记录进度，验收完成情况，再标记奖励已兑现。应用界面目前为简体中文，本次源码快照版本为 **1.4.3 / versionCode 12**。
+## 下载 1.0.0
 
-仓库包含安卓客户端和需要自行运行的本地后端，没有托管账号服务，也不提供 APK Release 下载；请从源码构建开发预览包。
+| 开始体验 | 下载入口 |
+| --- | --- |
+| **Android 预览包** · Android 8.0+ | [**下载 APK ↓**](https://github.com/chenzhiyong1994/ruyue/releases/download/v1.0.0/ruyue-1.0.0-preview.apk) |
+| **完整源码** · 包含 Python 后端 | [下载源码 ZIP](https://github.com/chenzhiyong1994/ruyue/archive/refs/tags/v1.0.0.zip) |
+| **版本详情** · 校验文件与构建信息 | [发布说明与全部文件](https://github.com/chenzhiyong1994/ruyue/releases/tag/v1.0.0) |
+
+**第一次体验？** 按[安装指南](docs/download.md)启动 Python 服务、安装 APK，再连接并注册测试账号。双方需要连接同一后端。安装包为 Debug 签名的开发预览，**versionCode 13**；请使用合成资料体验。
+
+公开版本从此前内部快照 1.4.3 重新编号为 1.0.0，Android 安装序号继续递增。已有安装的升级方法和签名说明见[下载与升级指南](docs/download.md)。
 
 ## 已实现的功能
 
@@ -34,7 +52,7 @@
 
 两张装饰性静物插画由 AI 生成，随应用本地提供。素材来源、提示词和使用位置见[插画素材记录](docs/design/ruyue-illustrations.md)。
 
-## 本地运行
+## 从源码构建
 
 准备 **Python 3.11+**、**JDK 17**，以及包含 **Platform 36**、SDK Build-Tools 和 Platform-Tools 的 Android SDK。设置 `JAVA_HOME`、`ANDROID_HOME`，将 `adb` 加入 `PATH`。应用最低支持 **Android 8.0 / API 26**。使用仓库中的 Gradle Wrapper，首次构建需要联网下载依赖。
 
@@ -73,8 +91,11 @@ adb -s "<device-serial>" reverse tcp:8765 tcp:8765
 
 此原型不提供生产托管、账号找回、托管备份、运行维护或持续安全支持。调试签名和本地构建成功不代表生产可用，请使用合成数据评估。考虑本地测试之外的部署前，请先阅读[安全说明](SECURITY.md)。
 
+常规应用迭代自 2026 年 9 月 30 日暂停。本次 1.0.0 整理已有功能并提供下载，项目仍是未完成的实验性原型，不承诺后续迭代、维护、回复 Issue 或 PR，以及安全修复。
+
 | 文档 | 内容 |
 | --- | --- |
+| [下载与运行](docs/download.md) | 安装包、校验、本地连接与升级说明 |
 | [开发指南](docs/development.md) | 工具链、本地服务、安卓构建与配置，英文 |
 | [测试指南](docs/testing.md) | 单测、HTTP、安卓及独立原生检查，英文 |
 | [使用说明](docs/user-guide.md) | 应用操作流程 |

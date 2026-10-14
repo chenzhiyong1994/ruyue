@@ -2,7 +2,7 @@
 
 本文件是服务端与 Android 的共同契约。所有 JSON 使用 UTF-8、camelCase；除 /health、register、login 外均需 Authorization: Bearer token。时间是 UTC ISO 8601 字符串，形如 2026-09-26T08:00:00Z；null 表示不限期。服务端时间为准。
 
-1.4.0 起改为兑现方标记后结束，替代旧版二次收讫契约。当前发布版本为 1.4.3；API 路径与 apiVersion 保持 v1，行为和旧数据兼容如下。回归入口见[测试指南](testing.md)。
+1.4.0 起改为兑现方标记后结束，替代旧版二次收讫契约。当前公开发布版本为 1.0.0（从内部 1.4.3 快照重新编号）；API 路径与 apiVersion 保持 v1，行为和旧数据兼容如下。回归入口见[测试指南](testing.md)。
 
 ## 通用响应与写入
 

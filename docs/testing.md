@@ -1,6 +1,6 @@
 # Testing
 
-Ruyue is an unfinished experimental prototype, with development paused as of September 30, 2026. This guide describes checks for the 1.4.3 / version code 12 source snapshot and independent forks. Test availability is not a promise of maintenance or proof of production readiness.
+Ruyue is an unfinished experimental prototype, with development paused as of September 30, 2026. This guide describes checks for the 1.0.0 / version code 13 source snapshot and independent forks. Test availability is not a promise of maintenance or proof of production readiness.
 
 Use the supported toolchain in [development](development.md). Product behavior is defined by the stable [PA-001–PA-009 acceptance criteria](acceptance.md) and [API contract](api.md). Run the narrow checks relevant to a change; do not treat a successful build as proof that a two-person workflow works.
 

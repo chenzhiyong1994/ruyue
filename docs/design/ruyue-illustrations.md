@@ -1,6 +1,6 @@
 # 如约插画素材 / Illustration provenance
 
-如约 1.4.3 使用两幅 AI 生成的扁平插画，提示词保留于本文；通过内置图像生成工具生成，再处理背景、裁切透明边和缩放。它们是界面装饰，不是用户照片、真实物品记录或第三方产品素材。
+如约 1.0.0 沿用内部 1.4.3 的两幅 AI 生成的扁平插画，提示词保留于本文；通过内置图像生成工具生成，再处理背景、裁切透明边和缩放。它们是界面装饰，不是用户照片、真实物品记录或第三方产品素材。
 
 The two bundled illustrations were generated with an AI image tool from the prompts below, then processed for background transparency, cropping and sizing. They contain no user photos or personal records. They are included with the project under its [MIT license](../../LICENSE), to the extent applicable rights can be licensed. The Gradle Wrapper retains its separate third-party license; see [NOTICE](../../NOTICE).
 

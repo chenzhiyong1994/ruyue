@@ -7,8 +7,8 @@ android {
         applicationId 'cn.zhiya.pact'
         minSdk 26
         targetSdk 36
-        versionCode 12
-        versionName '1.4.3'
+        versionCode 13
+        versionName '1.0.0'
         manifestPlaceholders = [pactApiBaseUrl: System.getenv('PACT_API_BASE_URL') ?: '']
         testInstrumentationRunner 'cn.zhiya.pact.PactInstrumentation'
     }
